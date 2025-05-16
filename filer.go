@@ -54,7 +54,7 @@ func (f *Filer) Open(file any) error {
 	switch s := file.(type) {
 	case string:
 		f.path = s
-		if strings.HasPrefix(s, "http") {
+		if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") || strings.HasPrefix(s, "//:") {
 			f.typ = network
 			resp, err := http.Get(s)
 			if err != nil {

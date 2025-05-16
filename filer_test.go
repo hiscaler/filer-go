@@ -43,13 +43,6 @@ func TestOpen_HTTPURL(t *testing.T) {
 	err = filer.SaveTo(`.\tmp/a.jpg `)
 	assert.NoError(t, err)
 	assert.Equal(t, "/tmp/a.jpg", filer.Uri())
-
-	//defer readCloser.Close()
-	//
-	//buf := new(bytes.Buffer)
-	//_, err = buf.ReadFrom(readCloser)
-	//assert.NoError(t, err)
-	//assert.Equal(t, "Hello, World!", buf.String())
 }
 
 func TestOpen_Base64Data(t *testing.T) {
@@ -66,6 +59,7 @@ func TestOpen_Base64Data(t *testing.T) {
 
 func TestOpen_LocalFile(t *testing.T) {
 	filer := filer2.NewFiler()
+	defer filer.Close()
 
 	// 创建一个临时文件用于测试
 	tmpFile, err := os.CreateTemp("", "testfile")
@@ -77,16 +71,11 @@ func TestOpen_LocalFile(t *testing.T) {
 
 	err = filer.Open(tmpFile.Name())
 	assert.NoError(t, err)
-	//defer readCloser.Close()
-	//
-	//buf := new(bytes.Buffer)
-	//_, err = buf.ReadFrom(readCloser)
-	//assert.NoError(t, err)
-	//assert.Equal(t, "Hello, World!", buf.String())
 }
 
 func TestOpen_OSFile(t *testing.T) {
 	filer := filer2.NewFiler()
+	defer filer.Close()
 
 	// 创建一个临时文件用于测试
 	tmpFile, err := os.CreateTemp("", "testfile")
