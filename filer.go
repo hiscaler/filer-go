@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"image"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -33,11 +35,17 @@ func (f *Filer) Open(file any) (readCloser io.ReadCloser, err error) {
 		f.path = s
 		if strings.HasPrefix(s, "http") {
 			var resp *http.Response
-			resp, err = http.Get(s)
-			if err != nil {
+			if resp, err = http.Get(s); err != nil {
 				return nil, err
 			}
 			defer resp.Body.Close()
+			var parsedURL *url.URL
+			parsedURL, err = url.Parse(f.path)
+			if err != nil {
+				f.error = err
+				return nil, err
+			}
+			f.name = filepath.Base(parsedURL.Path)
 			readCloser = resp.Body
 		} else if strings.HasPrefix(s, "data:") {
 			// 处理 base64 编码的文件
@@ -45,7 +53,8 @@ func (f *Filer) Open(file any) (readCloser io.ReadCloser, err error) {
 			if !found {
 				return nil, errors.New("invalid base64 format")
 			}
-			decodedData, err := base64.StdEncoding.DecodeString(data)
+			var decodedData []byte
+			decodedData, err = base64.StdEncoding.DecodeString(data)
 			if err != nil {
 				return nil, err
 			}
@@ -74,36 +83,36 @@ func (f *Filer) Open(file any) (readCloser io.ReadCloser, err error) {
 }
 
 func (f *Filer) Name() string {
-	if f.readCloser == nil {
-		return ""
-	}
-	return ""
+	return f.name
 }
 
 func (f *Filer) Ext() string {
-	if f.readCloser != nil {
-		if seeker, ok := f.readCloser.(io.Seeker); ok {
-			// 保存当前位置
-			pos, err := seeker.Seek(0, io.SeekCurrent)
-			if err == nil {
-				var buf [512]byte
-				n, err2 := f.readCloser.Read(buf[:])
-				// 恢复当前位置
-				seeker.Seek(pos, io.SeekStart)
-				if err2 == nil || err2 == io.EOF {
-					ct := http.DetectContentType(buf[:n])
-					switch ct {
-					case "image/jpeg":
-						return ".jpeg"
-					case "image/png":
-						return ".png"
-					case "image/gif":
-						return ".gif"
-					}
+	if f.readCloser == nil {
+		return ""
+	}
+
+	if seeker, ok := f.readCloser.(io.Seeker); ok {
+		// 保存当前位置
+		pos, err := seeker.Seek(0, io.SeekCurrent)
+		if err == nil {
+			var buf [512]byte
+			n, err2 := f.readCloser.Read(buf[:])
+			// 恢复当前位置
+			seeker.Seek(pos, io.SeekStart)
+			if err2 == nil || err2 == io.EOF {
+				ct := http.DetectContentType(buf[:n])
+				switch ct {
+				case "image/jpeg":
+					return ".jpeg"
+				case "image/png":
+					return ".png"
+				case "image/gif":
+					return ".gif"
 				}
 			}
 		}
 	}
+
 	return strings.ToLower(path.Ext(f.path))
 }
 
@@ -157,16 +166,32 @@ func (f *Filer) IsImage() (bool, error) {
 	return false, nil
 }
 
-func (f *Filer) SaveTo(path string) error {
+func (f *Filer) SaveTo(filename string) error {
 	if f.readCloser == nil {
 		return errors.New("no read file")
 	}
-	out, err := os.Create(path)
-	if err != nil {
-		return err
+
+	dir := filepath.Dir(filename)
+	// Creates dir and subdirectories if they do not exist
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("创建 %s 目录失败: %w", dir, err)
 	}
-	defer out.Close()
-	_, err = io.Copy(out, f.readCloser)
+	// Creates file
+	file, err := os.Create(filename)
+	if err != nil {
+		return fmt.Errorf("创建 %s 文件失败: %w", filename, err)
+	}
+	defer func() {
+		if err1 := file.Close(); err == nil && err1 != nil {
+			err = fmt.Errorf("关闭 %s 文件失败: %w", filename, err1)
+		}
+	}()
+
+	// 写入文件数据
+	_, err = io.Copy(file, f.readCloser)
+	if err != nil {
+		return fmt.Errorf("写入 %s 文件数据失败: %w", filename, err)
+	}
 	return err
 }
 
