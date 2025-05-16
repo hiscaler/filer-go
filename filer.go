@@ -29,40 +29,42 @@ func NewFiler() *Filer {
 	return &Filer{}
 }
 
-func (f *Filer) Open(file any) (readCloser io.ReadCloser, err error) {
+func (f *Filer) Open(file any) error {
 	switch s := file.(type) {
 	case string:
 		f.path = s
 		if strings.HasPrefix(s, "http") {
-			var resp *http.Response
-			if resp, err = http.Get(s); err != nil {
-				return nil, err
+			//var resp *http.Response
+			if resp, err := http.Get(s); err != nil {
+				return err
+			} else {
+				defer resp.Body.Close()
+				var parsedURL *url.URL
+				parsedURL, err := url.Parse(f.path)
+				if err != nil {
+					f.error = err
+					return err
+				}
+				f.name = filepath.Base(parsedURL.Path)
+				f.readCloser = resp.Body
 			}
-			defer resp.Body.Close()
-			var parsedURL *url.URL
-			parsedURL, err = url.Parse(f.path)
-			if err != nil {
-				f.error = err
-				return nil, err
-			}
-			f.name = filepath.Base(parsedURL.Path)
-			readCloser = resp.Body
+
 		} else if strings.HasPrefix(s, "data:") {
 			// 处理 base64 编码的文件
 			_, data, found := strings.Cut(s, ",")
 			if !found {
-				return nil, errors.New("invalid base64 format")
+				return errors.New("invalid base64 format")
 			}
-			var decodedData []byte
-			decodedData, err = base64.StdEncoding.DecodeString(data)
+
+			decodedData, err := base64.StdEncoding.DecodeString(data)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			readCloser = io.NopCloser(bytes.NewReader(decodedData))
+			f.readCloser = io.NopCloser(bytes.NewReader(decodedData))
 		} else {
-			readCloser, err = os.Open(f.path)
+			readCloser, err := os.Open(f.path)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			f.name = filepath.Base(f.path)
 			defer func(readCloser io.ReadCloser) {
@@ -72,14 +74,13 @@ func (f *Filer) Open(file any) (readCloser io.ReadCloser, err error) {
 	case *os.File:
 		f.path = s.Name()
 		f.readCloser = s
-		readCloser = s
 	case multipart.File:
 		f.readCloser = s
-		readCloser = s
 	default:
-		return nil, errors.New("unsupported file format")
+		return errors.New("unsupported file format")
 	}
-	return readCloser, nil
+
+	return nil
 }
 
 func (f *Filer) Name() string {

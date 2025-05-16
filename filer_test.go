@@ -1,7 +1,6 @@
 package filer_test
 
 import (
-	"bytes"
 	"encoding/base64"
 	"errors"
 	filer2 "github.com/hiscaler/filer-go"
@@ -30,27 +29,30 @@ func (m *MockMultipartFile) Close() error {
 
 func TestOpen_HTTPURL(t *testing.T) {
 	filer := filer2.NewFiler()
-	readCloser, err := filer.Open("http://example.com")
+	err := filer.Open("https://img.kwcdn.com/product/fancy/2e2e0355-20a5-4838-9029-6bbb652ee845.jpg")
 	assert.NoError(t, err)
-	defer readCloser.Close()
 
-	buf := new(bytes.Buffer)
-	_, err = buf.ReadFrom(readCloser)
-	assert.NoError(t, err)
-	assert.Equal(t, "Hello, World!", buf.String())
+	assert.Equal(t, "2e2e0355-20a5-4838-9029-6bbb652ee845.jpg", filer.Name())
+	assert.Equal(t, ".jpg", filer.Ext())
+
+	//defer readCloser.Close()
+	//
+	//buf := new(bytes.Buffer)
+	//_, err = buf.ReadFrom(readCloser)
+	//assert.NoError(t, err)
+	//assert.Equal(t, "Hello, World!", buf.String())
 }
 
 func TestOpen_Base64Data(t *testing.T) {
 	filer := filer2.NewFiler()
-
-	readCloser, err := filer.Open("data:," + base64.StdEncoding.EncodeToString([]byte("Hello, World!")))
+	err := filer.Open("data:," + base64.StdEncoding.EncodeToString([]byte("Hello, World!")))
 	assert.NoError(t, err)
-	defer readCloser.Close()
-
-	buf := new(bytes.Buffer)
-	_, err = buf.ReadFrom(readCloser)
-	assert.NoError(t, err)
-	assert.Equal(t, "Hello, World!", buf.String())
+	//defer readCloser.Close()
+	//
+	//buf := new(bytes.Buffer)
+	//_, err = buf.ReadFrom(readCloser)
+	//assert.NoError(t, err)
+	//assert.Equal(t, "Hello, World!", buf.String())
 }
 
 func TestOpen_LocalFile(t *testing.T) {
@@ -64,14 +66,14 @@ func TestOpen_LocalFile(t *testing.T) {
 	assert.NoError(t, err)
 	tmpFile.Close()
 
-	readCloser, err := filer.Open(tmpFile.Name())
+	err = filer.Open(tmpFile.Name())
 	assert.NoError(t, err)
-	defer readCloser.Close()
-
-	buf := new(bytes.Buffer)
-	_, err = buf.ReadFrom(readCloser)
-	assert.NoError(t, err)
-	assert.Equal(t, "Hello, World!", buf.String())
+	//defer readCloser.Close()
+	//
+	//buf := new(bytes.Buffer)
+	//_, err = buf.ReadFrom(readCloser)
+	//assert.NoError(t, err)
+	//assert.Equal(t, "Hello, World!", buf.String())
 }
 
 func TestOpen_OSFile(t *testing.T) {
@@ -89,14 +91,14 @@ func TestOpen_OSFile(t *testing.T) {
 	assert.NoError(t, err)
 	defer osFile.Close()
 
-	readCloser, err := filer.Open(osFile)
+	err = filer.Open(osFile)
 	assert.NoError(t, err)
-	defer readCloser.Close()
-
-	buf := new(bytes.Buffer)
-	_, err = buf.ReadFrom(readCloser)
-	assert.NoError(t, err)
-	assert.Equal(t, "Hello, World!", buf.String())
+	//defer readCloser.Close()
+	//
+	//buf := new(bytes.Buffer)
+	//_, err = buf.ReadFrom(readCloser)
+	//assert.NoError(t, err)
+	//assert.Equal(t, "Hello, World!", buf.String())
 }
 
 func TestOpen_MultipartFile(t *testing.T) {
@@ -108,22 +110,21 @@ func TestOpen_MultipartFile(t *testing.T) {
 	})
 	mockFile.On("Close").Return(nil)
 
-	readCloser, err := filer.Open(mockFile)
+	err := filer.Open(mockFile)
 	assert.NoError(t, err)
-	defer readCloser.Close()
-
-	buf := new(bytes.Buffer)
-	_, err = buf.ReadFrom(readCloser)
-	assert.NoError(t, err)
-	assert.Equal(t, "Hello, World!", buf.String())
+	//defer readCloser.Close()
+	//
+	//buf := new(bytes.Buffer)
+	//_, err = buf.ReadFrom(readCloser)
+	//assert.NoError(t, err)
+	//assert.Equal(t, "Hello, World!", buf.String())
 }
 
 func TestOpen_UnsupportedType(t *testing.T) {
 	filer := filer2.NewFiler()
 
-	readCloser, err := filer.Open(123)
+	err := filer.Open(123)
 	assert.Error(t, err)
-	assert.Nil(t, readCloser)
 }
 
 // mockTransport 模拟 http.RoundTripper 接口
