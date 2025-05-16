@@ -29,11 +29,20 @@ func (m *MockMultipartFile) Close() error {
 
 func TestOpen_HTTPURL(t *testing.T) {
 	filer := filer2.NewFiler()
+	defer filer.Close()
 	err := filer.Open("https://img.kwcdn.com/product/fancy/2e2e0355-20a5-4838-9029-6bbb652ee845.jpg")
 	assert.NoError(t, err)
 
 	assert.Equal(t, "2e2e0355-20a5-4838-9029-6bbb652ee845.jpg", filer.Name())
 	assert.Equal(t, ".jpg", filer.Ext())
+
+	size, err := filer.Size()
+	assert.NoError(t, err)
+	assert.Equal(t, int64(475617), size)
+
+	err = filer.SaveTo(`.\tmp/a.jpg `)
+	assert.NoError(t, err)
+	assert.Equal(t, "/tmp/a.jpg", filer.Uri())
 
 	//defer readCloser.Close()
 	//
