@@ -7,14 +7,22 @@ import (
 	"fmt"
 	"image"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 
 	"mime/multipart"
+)
+
+const (
+	base64Pattern  string = "^(?:[A-Za-z0-9+\\/]{4})*(?:[A-Za-z0-9+\\/]{2}==|[A-Za-z0-9+\\/]{3}=|[A-Za-z0-9+\\/]{4})$"
+	dataURIPattern        = `^data:(?:[a-zA-Z]+\/[a-zA-Z0-9-.+]+)(?:;charset=[a-zA-Z0-9-]+)?;base64,[A-Za-z0-9+\/]+=*$`
 )
 
 // file type
@@ -25,11 +33,22 @@ const (
 	osFile
 )
 
+var (
+	rxBase64  *regexp.Regexp
+	rxDataURI *regexp.Regexp
+)
+
+func init() {
+	rxBase64 = regexp.MustCompile(base64Pattern)
+	rxDataURI = regexp.MustCompile(dataURIPattern)
+}
+
 type Filer struct {
 	path        string
 	typ         int
 	name        string
 	size        int64
+	ext         string
 	uri         string
 	readCloser  io.ReadCloser
 	writeCloser io.WriteCloser
@@ -46,6 +65,7 @@ func (f *Filer) Open(file any) error {
 	f.typ = 0
 	f.name = ""
 	f.size = 0
+	f.ext = ""
 	f.uri = ""
 	f.readCloser = nil
 	f.writeCloser = nil
@@ -69,18 +89,32 @@ func (f *Filer) Open(file any) error {
 			f.name = filepath.Base(parsedURL.Path)
 			f.readCloser = resp.Body
 			f.size = resp.ContentLength
-		} else if strings.HasPrefix(s, "data:") {
-			f.typ = base64Type
+		} else if rxDataURI.MatchString(s) {
 			// 处理 base64 编码的文件
-			_, data, found := strings.Cut(s, ",")
-			if !found {
+			f.typ = base64Type
+			parts := strings.Split(s, ";")
+			if len(parts) != 2 {
 				return errors.New("filer: invalid base64 format")
 			}
 
-			decodedData, err := base64.StdEncoding.DecodeString(data)
+			mimeType := strings.TrimPrefix(parts[0], "data:")
+			if extensions, err := mime.ExtensionsByType(mimeType); err == nil {
+				slices.SortStableFunc(extensions, func(a, b string) int {
+					return len(b) - len(a)
+				})
+				index := slices.IndexFunc(extensions, func(ext string) bool {
+					return strings.Contains(mimeType, ext[1:])
+				})
+				if index != -1 {
+					f.ext = extensions[index]
+				}
+			}
+
+			decodedData, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(parts[1], "base64,"))
 			if err != nil {
 				return fmt.Errorf("filer: %w", err)
 			}
+			f.size = int64(len(decodedData))
 			f.readCloser = io.NopCloser(bytes.NewReader(decodedData))
 		} else {
 			f.typ = localFilePath
@@ -112,6 +146,10 @@ func (f *Filer) Name() string {
 func (f *Filer) Ext() string {
 	if f.readCloser == nil {
 		return ""
+	}
+
+	if f.ext != "" {
+		return f.ext
 	}
 
 	if seeker, ok := f.readCloser.(io.Seeker); ok {
@@ -146,6 +184,9 @@ func (f *Filer) Size() (int64, error) {
 
 	switch f.typ {
 	case network:
+		return f.size, nil
+
+	case base64Type:
 		return f.size, nil
 
 	default:
