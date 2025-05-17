@@ -25,14 +25,14 @@ const (
 	dataURIPattern        = `^data:(?:[a-zA-Z]+\/[a-zA-Z0-9-.+]+)(?:;charset=[a-zA-Z0-9-]+)?;base64,[A-Za-z0-9+\/]+=*$`
 )
 
-// file type
+// File type
 const (
 	network = iota
 	base64Type
 	localFilePath
 	textContent
 	osFile
-	multipartFile
+	multipartFileHeader
 )
 
 var (
@@ -40,9 +40,19 @@ var (
 	rxDataURI *regexp.Regexp
 )
 
+var mimeTypeExt map[string]string
+
 func init() {
 	rxBase64 = regexp.MustCompile(base64Pattern)
 	rxDataURI = regexp.MustCompile(dataURIPattern)
+	mimeTypeExt = map[string]string{
+		"image/jpeg":      ".jpg",
+		"image/png":       ".png",
+		"image/gif":       ".gif",
+		"image/webp":      ".webp",
+		"image/bmp":       ".bmp",
+		"application/pdf": ".pdf",
+	}
 }
 
 type Filer struct {
@@ -141,9 +151,16 @@ func (f *Filer) Open(file any) error {
 		f.typ = osFile
 		f.path = s.Name()
 		f.readCloser = s
-	case multipart.File:
-		f.typ = multipartFile
-		f.readCloser = s
+	case *multipart.FileHeader:
+		f.typ = multipartFileHeader
+		f1, err := s.Open()
+		if err != nil {
+			return fmt.Errorf("filer: %w", err)
+		}
+		f.name = s.Filename
+		f.ext = filepath.Ext(s.Filename)
+		f.size = s.Size
+		f.readCloser = f1
 	default:
 		return fmt.Errorf("filer: unsupported file format %T", s)
 	}
@@ -171,22 +188,37 @@ func (f *Filer) Ext() string {
 			var buf [512]byte
 			n, err2 := f.readCloser.Read(buf[:])
 			// 恢复当前位置
-			seeker.Seek(pos, io.SeekStart)
+			_, _ = seeker.Seek(pos, io.SeekStart)
 			if err2 == nil || err2 == io.EOF {
-				ct := http.DetectContentType(buf[:n])
-				switch ct {
-				case "image/jpeg":
-					return ".jpeg"
-				case "image/png":
-					return ".png"
-				case "image/gif":
-					return ".gif"
+				mimeType := http.DetectContentType(buf[:n])
+				// 优先查手动表
+				if ext, ok := mimeTypeExt[mimeType]; ok {
+					return ext
 				}
+				extensions, _ := mime.ExtensionsByType(mimeType)
+				if len(extensions) == 0 {
+					return ""
+				}
+				slices.SortStableFunc(extensions, func(a, b string) int {
+					return len(b) - len(a)
+				})
+				// 分割 MIME，尝试找与后缀一致的扩展名
+				parts := strings.Split(mimeType, "/")
+				if len(parts) == 2 {
+					suffix := "." + strings.ToLower(parts[1])
+					for _, ext := range extensions {
+						if ext == suffix {
+							return ext
+						}
+					}
+				}
+				// 没找到就返回第一个
+				return extensions[0]
 			}
 		}
 	}
 
-	return strings.ToLower(path.Ext(f.path))
+	return strings.ToLower(filepath.Ext(f.path))
 }
 
 func (f *Filer) Size() (int64, error) {

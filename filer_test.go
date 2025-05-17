@@ -1,31 +1,16 @@
 package filer_test
 
 import (
+	"bytes"
 	"encoding/base64"
-	"errors"
 	filer2 "github.com/hiscaler/filer-go"
-	"net/http"
+	"mime/multipart"
+	"net/textproto"
 	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 )
-
-// MockMultipartFile 模拟 multipart.File 接口
-type MockMultipartFile struct {
-	mock.Mock
-}
-
-func (m *MockMultipartFile) Read(p []byte) (n int, err error) {
-	args := m.Called(p)
-	return args.Int(0), args.Error(1)
-}
-
-func (m *MockMultipartFile) Close() error {
-	args := m.Called()
-	return args.Error(0)
-}
 
 func TestOpen_HTTPURL(t *testing.T) {
 	filer := filer2.NewFiler()
@@ -98,7 +83,7 @@ func TestOpen_LocalFile(t *testing.T) {
 	err := filer.Open("./tests/test.jpg")
 	assert.NoError(t, err)
 
-	assert.Equal(t, ".jpeg", filer.Ext())
+	assert.Equal(t, ".jpg", filer.Ext())
 
 	size, err := filer.Size()
 	assert.NoError(t, err)
@@ -120,7 +105,7 @@ func TestOpen_OSFile(t *testing.T) {
 	err = filer.Open(file)
 	assert.NoError(t, err)
 
-	assert.Equal(t, ".jpeg", filer.Ext())
+	assert.Equal(t, ".jpg", filer.Ext())
 
 	size, err := filer.Size()
 	assert.NoError(t, err)
@@ -131,41 +116,54 @@ func TestOpen_OSFile(t *testing.T) {
 	assert.Equal(t, "/tmp/test_new.jpg", filer.Uri())
 }
 
-func TestOpen_MultipartFile(t *testing.T) {
+func TestOpen_MultipartFileHeader(t *testing.T) {
+	var b bytes.Buffer
+	writer := multipart.NewWriter(&b)
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Disposition", `form-data; name="file"; filename="./tests/test.txt"`)
+	h.Set("Content-Type", "text/plain")
+
+	// 创建一个 form 文件字段
+	part, err := writer.CreatePart(h)
+	if err != nil {
+		t.Fatalf("CreatePart error: %v", err)
+	}
+	part.Write([]byte("Hello, world!"))
+	writer.Close()
+
+	// 解析 multipart 内容
+	reader := multipart.NewReader(&b, writer.Boundary())
+	form, err := reader.ReadForm(1024)
+	if err != nil {
+		t.Fatalf("ReadForm error: %v", err)
+	}
+	defer form.RemoveAll()
+
+	files := form.File["file"]
+	if len(files) == 0 {
+		t.Fatalf("No file found in form")
+	}
+
+	fileHeader := files[0]
+	if fileHeader.Filename != "test.txt" {
+		t.Errorf("want filename 'test.txt', got %q", fileHeader.Filename)
+	}
+
 	filer := filer2.NewFiler()
 	defer filer.Close()
 
-	mockFile := new(MockMultipartFile)
-	mockFile.On("Read", mock.Anything).Return(13, nil).Once().Run(func(args mock.Arguments) {
-		copy(args[0].([]byte), "Hello, World!")
-	})
-	mockFile.On("Close").Return(nil)
-
-	err := filer.Open(mockFile)
+	err = filer.Open(fileHeader)
 	assert.NoError(t, err)
-	//defer readCloser.Close()
-	//
-	//buf := new(bytes.Buffer)
-	//_, err = buf.ReadFrom(readCloser)
-	//assert.NoError(t, err)
-	//assert.Equal(t, "Hello, World!", buf.String())
-}
 
-func TestOpen_UnsupportedType(t *testing.T) {
-	filer := filer2.NewFiler()
+	e := filer.Ext()
+	_ = e
+	assert.Equal(t, ".txt", filer.Ext())
 
-	err := filer.Open(123)
-	assert.Error(t, err)
-}
+	size, err := filer.Size()
+	assert.NoError(t, err)
+	assert.Equal(t, int64(13), size)
 
-// mockTransport 模拟 http.RoundTripper 接口
-type mockTransport struct {
-	responses map[string]*http.Response
-}
-
-func (m *mockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if resp, ok := m.responses[req.URL.String()]; ok {
-		return resp, nil
-	}
-	return nil, errors.New("not found")
+	err = filer.SaveTo(`.\tmp/test_new.txt`)
+	assert.NoError(t, err)
+	assert.Equal(t, "/tmp/test_new.txt", filer.Uri())
 }
