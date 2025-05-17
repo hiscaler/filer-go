@@ -73,20 +73,40 @@ func TestOpen_Base64ImageData(t *testing.T) {
 	assert.Equal(t, "/tmp/base64.jpg", filer.Uri())
 }
 
+func TestOpen_TextContent(t *testing.T) {
+	filer := filer2.NewFiler()
+	defer filer.Close()
+
+	err := filer.Open("abcdefg")
+	assert.NoError(t, err)
+
+	assert.Equal(t, "", filer.Ext())
+
+	size, err := filer.Size()
+	assert.NoError(t, err)
+	assert.Equal(t, int64(7), size)
+
+	err = filer.SaveTo(`.\tmp/test.txt`)
+	assert.NoError(t, err)
+	assert.Equal(t, "/tmp/test.txt", filer.Uri())
+}
+
 func TestOpen_LocalFile(t *testing.T) {
 	filer := filer2.NewFiler()
 	defer filer.Close()
 
-	// 创建一个临时文件用于测试
-	tmpFile, err := os.CreateTemp("", "testfile")
+	err := filer.Open("./tests/test.jpg")
 	assert.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-	_, err = tmpFile.WriteString("Hello, World!")
-	assert.NoError(t, err)
-	tmpFile.Close()
 
-	err = filer.Open(tmpFile.Name())
+	assert.Equal(t, ".jpeg", filer.Ext())
+
+	size, err := filer.Size()
 	assert.NoError(t, err)
+	assert.Equal(t, int64(11876), size)
+
+	err = filer.SaveTo(`.\tmp/test_new.jpg`)
+	assert.NoError(t, err)
+	assert.Equal(t, "/tmp/test_new.jpg", filer.Uri())
 }
 
 func TestOpen_OSFile(t *testing.T) {
@@ -94,29 +114,26 @@ func TestOpen_OSFile(t *testing.T) {
 	defer filer.Close()
 
 	// 创建一个临时文件用于测试
-	tmpFile, err := os.CreateTemp("", "testfile")
+	file, err := os.Open("./tests/test.jpg")
 	assert.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-	_, err = tmpFile.WriteString("Hello, World!")
-	assert.NoError(t, err)
-	tmpFile.Close()
 
-	osFile, err := os.Open(tmpFile.Name())
+	err = filer.Open(file)
 	assert.NoError(t, err)
-	defer osFile.Close()
 
-	err = filer.Open(osFile)
+	assert.Equal(t, ".jpeg", filer.Ext())
+
+	size, err := filer.Size()
 	assert.NoError(t, err)
-	//defer readCloser.Close()
-	//
-	//buf := new(bytes.Buffer)
-	//_, err = buf.ReadFrom(readCloser)
-	//assert.NoError(t, err)
-	//assert.Equal(t, "Hello, World!", buf.String())
+	assert.Equal(t, int64(11876), size)
+
+	err = filer.SaveTo(`.\tmp/test_new.jpg`)
+	assert.NoError(t, err)
+	assert.Equal(t, "/tmp/test_new.jpg", filer.Uri())
 }
 
 func TestOpen_MultipartFile(t *testing.T) {
 	filer := filer2.NewFiler()
+	defer filer.Close()
 
 	mockFile := new(MockMultipartFile)
 	mockFile.On("Read", mock.Anything).Return(13, nil).Once().Run(func(args mock.Arguments) {

@@ -30,7 +30,9 @@ const (
 	network = iota
 	base64Type
 	localFilePath
+	textContent
 	osFile
+	multipartFile
 )
 
 var (
@@ -117,23 +119,33 @@ func (f *Filer) Open(file any) error {
 			f.size = int64(len(decodedData))
 			f.readCloser = io.NopCloser(bytes.NewReader(decodedData))
 		} else {
-			f.typ = localFilePath
-			readCloser, err := os.Open(f.path)
-			if err != nil {
-				return fmt.Errorf("filer: %w", err)
+			// 判断是普通文本还是文件路径
+			if strings.Contains(s, string(os.PathSeparator)) ||
+				strings.HasPrefix(s, ".") ||
+				filepath.IsAbs(s) ||
+				path.Ext(s) != "" {
+				f.typ = localFilePath
+				readCloser, err := os.Open(f.path)
+				if err != nil {
+					return fmt.Errorf("filer: %w", err)
+				}
+				f.readCloser = readCloser
+				f.name = filepath.Base(f.path)
+			} else {
+				f.typ = textContent
+				f.size = int64(len(s))
+				f.readCloser = io.NopCloser(strings.NewReader(s))
 			}
-			f.readCloser = readCloser
-			f.name = filepath.Base(f.path)
 		}
 	case *os.File:
 		f.typ = osFile
 		f.path = s.Name()
 		f.readCloser = s
 	case multipart.File:
-		f.typ = network
+		f.typ = multipartFile
 		f.readCloser = s
 	default:
-		return errors.New("filer: unsupported file format")
+		return fmt.Errorf("filer: unsupported file format %T", s)
 	}
 
 	return nil
@@ -183,10 +195,7 @@ func (f *Filer) Size() (int64, error) {
 	}
 
 	switch f.typ {
-	case network:
-		return f.size, nil
-
-	case base64Type:
+	case network, base64Type, textContent:
 		return f.size, nil
 
 	default:
