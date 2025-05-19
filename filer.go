@@ -8,6 +8,7 @@ import (
 	"image"
 	"io"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,8 +17,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-
-	"mime/multipart"
 )
 
 const (
@@ -88,18 +87,16 @@ func (f *Filer) Open(file any) error {
 	switch s := file.(type) {
 	case string:
 		f.path = s
-		if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") || strings.HasPrefix(s, "//:") {
+		var parsedURL *url.URL
+		parsedURL, err := url.Parse(f.path)
+		if err == nil && slices.Contains([]string{"http", "https"}, parsedURL.Scheme) {
 			f.typ = network
-			resp, err := http.Get(s)
+			var resp *http.Response
+			resp, err = http.Get(s)
 			if err != nil {
 				return fmt.Errorf("filer: %w", err)
 			}
 
-			var parsedURL *url.URL
-			parsedURL, err = url.Parse(f.path)
-			if err != nil {
-				return fmt.Errorf("filer: %w", err)
-			}
 			f.name = filepath.Base(parsedURL.Path)
 			f.readCloser = resp.Body
 			f.size = resp.ContentLength
