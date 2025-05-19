@@ -46,7 +46,7 @@ func init() {
 	rxBase64 = regexp.MustCompile(base64Pattern)
 	rxDataURI = regexp.MustCompile(dataURIPattern)
 	mimeTypeExt = map[string]string{
-		"image/jpeg":      ".jpg",
+		"image/jpeg":      ".jpeg",
 		"image/png":       ".png",
 		"image/gif":       ".gif",
 		"image/webp":      ".webp",
@@ -60,6 +60,7 @@ type Filer struct {
 	typ         int
 	name        string
 	size        int64
+	possibleExt string
 	ext         string
 	uri         string
 	readCloser  io.ReadCloser
@@ -109,25 +110,13 @@ func (f *Filer) Open(file any) error {
 				return errors.New("filer: invalid base64 format")
 			}
 
-			mimeType := strings.TrimPrefix(parts[0], "data:")
-			if extensions, err := mime.ExtensionsByType(mimeType); err == nil {
-				slices.SortStableFunc(extensions, func(a, b string) int {
-					return len(b) - len(a)
-				})
-				index := slices.IndexFunc(extensions, func(ext string) bool {
-					return strings.Contains(mimeType, ext[1:])
-				})
-				if index != -1 {
-					f.ext = extensions[index]
-				}
-			}
-
 			decodedData, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(parts[1], "base64,"))
 			if err != nil {
 				return fmt.Errorf("filer: %w", err)
 			}
 			f.size = int64(len(decodedData))
 			f.readCloser = io.NopCloser(bytes.NewReader(decodedData))
+			f.ext = detectFileExt(decodedData)
 		} else {
 			// 判断是普通文本还是文件路径
 			if strings.Contains(s, string(os.PathSeparator)) ||
@@ -139,6 +128,7 @@ func (f *Filer) Open(file any) error {
 				if err != nil {
 					return fmt.Errorf("filer: %w", err)
 				}
+				f.possibleExt = path.Ext(s)
 				f.readCloser = readCloser
 				f.name = filepath.Base(f.path)
 			} else {
@@ -150,6 +140,7 @@ func (f *Filer) Open(file any) error {
 	case *os.File:
 		f.typ = osFile
 		f.path = s.Name()
+		f.possibleExt = filepath.Ext(s.Name())
 		f.readCloser = s
 	case *multipart.FileHeader:
 		f.typ = multipartFileHeader
@@ -158,6 +149,7 @@ func (f *Filer) Open(file any) error {
 			return fmt.Errorf("filer: %w", err)
 		}
 		f.name = s.Filename
+		f.possibleExt = filepath.Ext(s.Filename)
 		f.ext = filepath.Ext(s.Filename)
 		f.size = s.Size
 		f.readCloser = f1
@@ -172,12 +164,49 @@ func (f *Filer) Name() string {
 	return f.name
 }
 
+func detectFileExt(data []byte, suggestExtensions ...string) string {
+	mimeType := http.DetectContentType(data)
+
+	suggestExt := ""
+	if len(suggestExtensions) != 0 {
+		suggestExt = suggestExtensions[0]
+	}
+
+	// 优先查手动表
+	if ext, ok := mimeTypeExt[mimeType]; ok && ext == suggestExt {
+		return ext
+	}
+	extensions, _ := mime.ExtensionsByType(mimeType)
+	if len(extensions) == 0 {
+		return ""
+	}
+
+	if suggestExt == "" && slices.Contains(extensions, suggestExt) {
+		return suggestExt
+	}
+
+	slices.SortStableFunc(extensions, func(a, b string) int {
+		return len(b) - len(a)
+	})
+
+	if _, v, ok := strings.Cut(mimeType, "/"); ok {
+		suffix := "." + strings.ToLower(v)
+		for _, ext := range extensions {
+			if ext == suffix {
+				return ext
+			}
+		}
+	}
+	// 没找到就返回第一个
+	return extensions[0]
+}
+
 func (f *Filer) Ext() string {
 	if f.readCloser == nil {
 		return ""
 	}
 
-	if f.ext != "" {
+	if f.ext != "" && f.possibleExt == "" {
 		return f.ext
 	}
 
@@ -190,30 +219,10 @@ func (f *Filer) Ext() string {
 			// 恢复当前位置
 			_, _ = seeker.Seek(pos, io.SeekStart)
 			if err2 == nil || err2 == io.EOF {
-				mimeType := http.DetectContentType(buf[:n])
-				// 优先查手动表
-				if ext, ok := mimeTypeExt[mimeType]; ok {
+				ext := detectFileExt(buf[:n], f.possibleExt)
+				if ext != "" {
 					return ext
 				}
-				extensions, _ := mime.ExtensionsByType(mimeType)
-				if len(extensions) == 0 {
-					return ""
-				}
-				slices.SortStableFunc(extensions, func(a, b string) int {
-					return len(b) - len(a)
-				})
-				// 分割 MIME，尝试找与后缀一致的扩展名
-				parts := strings.Split(mimeType, "/")
-				if len(parts) == 2 {
-					suffix := "." + strings.ToLower(parts[1])
-					for _, ext := range extensions {
-						if ext == suffix {
-							return ext
-						}
-					}
-				}
-				// 没找到就返回第一个
-				return extensions[0]
 			}
 		}
 	}
