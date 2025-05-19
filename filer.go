@@ -39,12 +39,12 @@ var (
 	rxDataURI *regexp.Regexp
 )
 
-var mimeTypeExt map[string]string
+var commonMimeTypeExt map[string]string
 
 func init() {
 	rxBase64 = regexp.MustCompile(base64Pattern)
 	rxDataURI = regexp.MustCompile(dataURIPattern)
-	mimeTypeExt = map[string]string{
+	commonMimeTypeExt = map[string]string{
 		// 图片
 		"image/jpeg":    ".jpeg",
 		"image/png":     ".png",
@@ -213,7 +213,7 @@ func detectFileExt(data []byte, suggestExtensions ...string) string {
 	}
 
 	// 优先查手动表
-	if ext, ok := mimeTypeExt[mimeType]; ok && ext == suggestExt {
+	if ext, ok := commonMimeTypeExt[mimeType]; ok && ext == suggestExt {
 		return ext
 	}
 	extensions, _ := mime.ExtensionsByType(mimeType)
