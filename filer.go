@@ -79,6 +79,7 @@ func (f *Filer) Open(file any) error {
 	f.name = ""
 	f.size = 0
 	f.ext = ""
+	f.possibleExt = ""
 	f.uri = ""
 	f.readCloser = nil
 	f.writeCloser = nil
@@ -169,7 +170,7 @@ func detectFileExt(data []byte, suggestExtensions ...string) string {
 
 	suggestExt := ""
 	if len(suggestExtensions) != 0 {
-		suggestExt = suggestExtensions[0]
+		suggestExt = strings.ToLower(suggestExtensions[0])
 	}
 
 	// 优先查手动表
@@ -181,7 +182,7 @@ func detectFileExt(data []byte, suggestExtensions ...string) string {
 		return ""
 	}
 
-	if suggestExt == "" && slices.Contains(extensions, suggestExt) {
+	if suggestExt != "" && slices.Contains(extensions, suggestExt) {
 		return suggestExt
 	}
 
@@ -201,13 +202,15 @@ func detectFileExt(data []byte, suggestExtensions ...string) string {
 	return extensions[0]
 }
 
+// Ext 文件扩展名
+// 注意：该函数总是返回全部小写字母的扩展名，无论原始文件的扩展名是什么
 func (f *Filer) Ext() string {
 	if f.readCloser == nil {
 		return ""
 	}
 
 	if f.ext != "" && f.possibleExt == "" {
-		return f.ext
+		return strings.ToLower(f.ext)
 	}
 
 	if seeker, ok := f.readCloser.(io.Seeker); ok {
@@ -221,7 +224,7 @@ func (f *Filer) Ext() string {
 			if err2 == nil || err2 == io.EOF {
 				ext := detectFileExt(buf[:n], f.possibleExt)
 				if ext != "" {
-					return ext
+					return strings.ToLower(ext)
 				}
 			}
 		}
