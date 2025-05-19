@@ -45,12 +45,54 @@ func init() {
 	rxBase64 = regexp.MustCompile(base64Pattern)
 	rxDataURI = regexp.MustCompile(dataURIPattern)
 	mimeTypeExt = map[string]string{
-		"image/jpeg":      ".jpeg",
-		"image/png":       ".png",
-		"image/gif":       ".gif",
-		"image/webp":      ".webp",
-		"image/bmp":       ".bmp",
-		"application/pdf": ".pdf",
+		// 图片
+		"image/jpeg":    ".jpeg",
+		"image/png":     ".png",
+		"image/gif":     ".gif",
+		"image/webp":    ".webp",
+		"image/bmp":     ".bmp",
+		"image/svg+xml": ".svg",
+		"image/tiff":    ".tiff",
+		"image/x-icon":  ".ico",
+
+		// 文本
+		"text/plain":      ".txt",
+		"text/html":       ".html",
+		"text/css":        ".css",
+		"text/javascript": ".js",
+		"text/csv":        ".csv",
+		"text/xml":        ".xml",
+
+		// 应用
+		"application/json":            ".json",
+		"application/pdf":             ".pdf",
+		"application/zip":             ".zip",
+		"application/gzip":            ".gz",
+		"application/x-tar":           ".tar",
+		"application/rar":             ".rar",
+		"application/x-7z-compressed": ".7z",
+		"application/msword":          ".doc",
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+		"application/vnd.ms-excel": ".xls",
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+		"application/vnd.mozilla.xul+xml":                                   ".xul",
+		"application/x-shockwave-flash":                                     ".swf",
+		"application/xhtml+xml":                                             ".xhtml",
+		"application/rtf":                                                   ".rtf",
+
+		// 音频
+		"audio/mpeg": ".mp3",
+		"audio/wav":  ".wav",
+		"audio/ogg":  ".ogg",
+		"audio/aac":  ".aac",
+		"audio/flac": ".flac",
+
+		// 视频
+		"video/mp4":       ".mp4",
+		"video/webm":      ".webm",
+		"video/ogg":       ".ogv",
+		"video/quicktime": ".mov",
+		"video/x-msvideo": ".avi",
 	}
 }
 
@@ -87,9 +129,9 @@ func (f *Filer) Open(file any) error {
 	switch s := file.(type) {
 	case string:
 		f.path = s
-		var parsedURL *url.URL
-		parsedURL, err := url.Parse(f.path)
-		if err == nil && slices.Contains([]string{"http", "https"}, parsedURL.Scheme) {
+		var u *url.URL
+		u, err := url.Parse(f.path)
+		if err == nil && slices.Contains([]string{"http", "https"}, u.Scheme) && u.Host != "" {
 			f.typ = network
 			var resp *http.Response
 			resp, err = http.Get(s)
@@ -97,7 +139,7 @@ func (f *Filer) Open(file any) error {
 				return fmt.Errorf("filer: %w", err)
 			}
 
-			f.name = filepath.Base(parsedURL.Path)
+			f.name = filepath.Base(u.Path)
 			f.readCloser = resp.Body
 			f.size = resp.ContentLength
 		} else if rxDataURI.MatchString(s) {
