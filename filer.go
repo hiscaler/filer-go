@@ -340,8 +340,9 @@ func (f *Filer) SaveTo(filename string) error {
 
 	filename = filepath.Clean(filename)
 	f.uri = strings.ReplaceAll(filename, "\\", "/")
-	letter := filename[0:1]
-	if letter != "/" && letter != "." {
+	if filename[0:1] == "." {
+		f.uri = f.uri[1:]
+	} else {
 		f.uri = "/" + f.uri
 	}
 	dir := filepath.Dir(filename)
