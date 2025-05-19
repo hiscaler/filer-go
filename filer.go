@@ -339,7 +339,7 @@ func (f *Filer) SaveTo(filename string) error {
 	}
 
 	filename = filepath.Clean(filename)
-	f.uri = filepath.ToSlash(filename)
+	f.uri = strings.ReplaceAll(filename, "\\", "/")
 	if !strings.HasPrefix(f.uri, "/") {
 		f.uri = "/" + f.uri
 	}
