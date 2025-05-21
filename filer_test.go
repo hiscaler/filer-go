@@ -21,18 +21,18 @@ func init() {
 }
 
 func TestOpen_HTTPURL(t *testing.T) {
-	err := f.Open("https://img.kwcdn.com/product/fancy/2e2e0355-20a5-4838-9029-6bbb652ee845.jpg")
+	err := f.Open("http://examples-1251000004.cos.ap-shanghai.myqcloud.com/sample.jpeg")
 	if err != nil {
 		log.Panic("get http file failed", err)
 	}
 	assert.NoError(t, err)
 
-	assert.Equal(t, "2e2e0355-20a5-4838-9029-6bbb652ee845.jpg", f.Name())
-	assert.Equal(t, ".jpg", f.Ext())
+	assert.Equal(t, "sample.jpeg", f.Name())
+	assert.Equal(t, ".jpeg", f.Ext())
 
 	size, err := f.Size()
 	assert.NoError(t, err)
-	assert.Equal(t, int64(475617), size)
+	assert.Equal(t, int64(158421), size)
 
 	err = f.SaveTo(`.\tmp/a.jpg `)
 	assert.NoError(t, err)
