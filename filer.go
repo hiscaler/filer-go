@@ -2,6 +2,7 @@ package filer
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -94,6 +95,15 @@ func init() {
 		"video/quicktime": ".mov",
 		"video/x-msvideo": ".avi",
 	}
+}
+
+type FileInfo struct {
+	path sql.NullBool
+	Type int
+	Name string
+	Size int64
+	Ext  string
+	Body io.ReadCloser
 }
 
 type Filer struct {
@@ -316,7 +326,7 @@ func (f *Filer) IsImage() (bool, error) {
 		var buf [512]byte
 		n, err2 := f.readCloser.Read(buf[:])
 		// 恢复当前位置
-		seeker.Seek(pos, io.SeekStart)
+		_, _ = seeker.Seek(pos, io.SeekStart)
 		if err2 != nil && err2 != io.EOF {
 			return false, err2
 		}
@@ -329,32 +339,46 @@ func (f *Filer) IsImage() (bool, error) {
 	return false, nil
 }
 
-func (f *Filer) SaveTo(filename string) error {
-	filename = strings.TrimSpace(filename)
-	if filename == "" {
-		return errors.New("filer: filename is can't empty")
-	}
+// SaveTo 保存文件到指定位置
+// 如果只指定路径（以 "/" 或者 "\" 结尾），不指定文件名称，将使用原文件名作为保存后的文件名
+func (f *Filer) SaveTo(filename string) (string, error) {
 	if f.readCloser == nil {
-		return errors.New("filer: no read file")
+		return "", errors.New("filer: no read file")
 	}
 
-	filename = filepath.Clean(filename)
-	f.uri = strings.ReplaceAll(filename, "\\", "/")
-	letter := filename[0:1]
-	if letter == "." {
-		f.uri = f.uri[1:]
-	} else if letter != "/" {
-		f.uri = "/" + f.uri
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return "", errors.New("filer: filename is can't empty")
 	}
+
+	if strings.HasSuffix(filename, "/") || strings.HasSuffix(filename, "\\") {
+		filename = filepath.Clean(filename)
+		filename += string(os.PathSeparator) + f.Name()
+	}
+
+	filename = strings.ReplaceAll(filename, "\\", "/")
+	uri := filename
+	filename = filepath.Clean(filename)
+	if filepath.IsAbs(filename) {
+		uri = "" // Is bad? Like ////a/b/c.jpg
+	} else {
+		letter := uri[0:1]
+		if letter == "." {
+			uri = uri[1:]
+		} else if letter != "/" {
+			uri = "/" + uri
+		}
+	}
+	f.uri = uri
 	dir := filepath.Dir(filename)
 	// Creates dir and subdirectories if they do not exist
 	if err := os.MkdirAll(dir, 0666); err != nil {
-		return fmt.Errorf("filer: make %s directory failed, %w", dir, err)
+		return "", fmt.Errorf("filer: make %s directory failed, %w", dir, err)
 	}
 	// Creates file
 	file, err := os.Create(filename)
 	if err != nil {
-		return fmt.Errorf("filer: create %s file failed, %w", filename, err)
+		return "", fmt.Errorf("filer: create %s file failed, %w", filename, err)
 	}
 	defer func() {
 		if err1 := file.Close(); err == nil && err1 != nil {
@@ -365,9 +389,9 @@ func (f *Filer) SaveTo(filename string) error {
 	// 写入文件数据
 	_, err = io.Copy(file, f.readCloser)
 	if err != nil {
-		return fmt.Errorf("filer: write %s file data failed, %w", filename, err)
+		return "", fmt.Errorf("filer: write %s file data failed, %w", filename, err)
 	}
-	return err
+	return filename, nil
 }
 
 func (f *Filer) Uri() string {

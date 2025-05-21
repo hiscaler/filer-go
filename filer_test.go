@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/textproto"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,8 +35,14 @@ func TestOpen_HTTPURL(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, int64(158421), size)
 
-	err = f.SaveTo(`.\tmp/a.jpg `)
+	filePath, err := f.SaveTo(`.\tmp/ `)
 	assert.NoError(t, err)
+	assert.Equal(t, filepath.Join("tmp", "sample.jpeg"), filePath)
+	assert.Equal(t, "/tmp/sample.jpeg", f.Uri())
+
+	filePath, err = f.SaveTo(`.\tmp/a.jpg `)
+	assert.NoError(t, err)
+	assert.Equal(t, filepath.Join("tmp", "a.jpg"), filePath)
 	assert.Equal(t, "/tmp/a.jpg", f.Uri())
 }
 
@@ -61,7 +68,7 @@ func TestOpen_Base64ImageData(t *testing.T) {
 	assert.Equal(t, int64(11876), size)
 
 	assert.NoError(t, err)
-	err = f.SaveTo(`.\tmp/base64.jpg`)
+	_, err = f.SaveTo(`.\tmp/base64.jpg`)
 	assert.Equal(t, "/tmp/base64.jpg", f.Uri())
 }
 
@@ -75,7 +82,7 @@ func TestOpen_TextContent(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, int64(7), size)
 
-	err = f.SaveTo(`.\tmp/test.txt`)
+	_, err = f.SaveTo(`.\tmp/test.txt`)
 	assert.NoError(t, err)
 	assert.Equal(t, "/tmp/test.txt", f.Uri())
 }
@@ -90,7 +97,7 @@ func TestOpen_LocalFile(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, int64(11876), size)
 
-	err = f.SaveTo(`.\tmp/test_new.jpg`)
+	_, err = f.SaveTo(`.\tmp/test_new.jpg`)
 	assert.NoError(t, err)
 	assert.Equal(t, "/tmp/test_new.jpg", f.Uri())
 }
@@ -109,9 +116,11 @@ func TestOpen_OSFile(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, int64(11876), size)
 
-	err = f.SaveTo(`.\tmp/test_new.jpg`)
+	filename := filepath.Join(os.TempDir(), "test_new.jpg")
+	_, err = f.SaveTo(filename)
 	assert.NoError(t, err)
-	assert.Equal(t, "/tmp/test_new.jpg", f.Uri())
+	defer os.Remove(filename)
+	assert.Equal(t, "", f.Uri()) // Bad Uri?
 }
 
 func TestOpen_MultipartFileHeader(t *testing.T) {
@@ -158,7 +167,7 @@ func TestOpen_MultipartFileHeader(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, int64(13), size)
 
-	err = f.SaveTo(`.\tmp/test_new.txt`)
+	_, err = f.SaveTo(`.\tmp/test_new.txt`)
 	assert.NoError(t, err)
 	assert.Equal(t, "/tmp/test_new.txt", f.Uri())
 }
