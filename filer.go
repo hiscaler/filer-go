@@ -210,8 +210,14 @@ func (f *Filer) Open(file any) error {
 	return nil
 }
 
+// Name 文件名（带扩展名）
 func (f *Filer) Name() string {
 	return f.name
+}
+
+// Title 文件标题（不带扩展名）
+func (f *Filer) Title() string {
+	return strings.ReplaceAll(f.name, f.Ext(), "")
 }
 
 func detectFileExt(data []byte, suggestExtensions ...string) string {

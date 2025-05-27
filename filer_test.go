@@ -171,3 +171,23 @@ func TestOpen_MultipartFileHeader(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "/tmp/test_new.txt", f.Uri())
 }
+
+func TestFiler_Title(t *testing.T) {
+	type fields struct {
+		path string
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		want   string
+	}{
+		{"t1", fields{path: "./tests/test.jpg"}, "test"},
+		{"t2", fields{path: "./bad-dir/bad-file.jpg"}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_ = f.Open(tt.fields.path)
+			assert.Equalf(t, tt.want, f.Title(), "Title()")
+		})
+	}
+}
