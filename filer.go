@@ -2,10 +2,10 @@ package filer
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"gopkg.in/guregu/null.v4"
 	"image"
 	"io"
 	"mime"
@@ -27,12 +27,12 @@ const (
 
 // File type
 const (
-	network = iota
-	base64Type
-	localFilePath
-	textContent
-	osFile
-	multipartFileHeader
+	network             = "network"
+	base64Type          = "base64"
+	localFilePath       = "local-file"
+	textContent         = "text-content"
+	osFile              = "os-file"
+	multipartFileHeader = "form-file"
 )
 
 var (
@@ -98,17 +98,19 @@ func init() {
 }
 
 type FileInfo struct {
-	path sql.NullBool
-	Type int
-	Name string
-	Size int64
-	Ext  string
-	Body io.ReadCloser
+	Path  null.String    // File path
+	Type  null.String    // File type
+	Name  null.String    // File name with extension
+	Title null.String    // File name without extension
+	Uri   null.String    // File URI
+	Size  null.Int       // File size
+	Ext   null.String    // File extension
+	Body  *io.ReadCloser // File content
 }
 
 type Filer struct {
 	path        string
-	typ         int
+	typ         string
 	name        string
 	size        int64
 	possibleExt string
@@ -126,7 +128,7 @@ func NewFiler() *Filer {
 func (f *Filer) Open(file any) error {
 	// Reset file attributes before open
 	f.path = ""
-	f.typ = 0
+	f.typ = ""
 	f.name = ""
 	f.size = 0
 	f.ext = ""

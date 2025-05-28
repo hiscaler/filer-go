@@ -5,6 +5,7 @@ go 1.23.0
 require (
 	github.com/disintegration/imaging v1.6.2
 	github.com/stretchr/testify v1.10.0
+	gopkg.in/guregu/null.v4 v4.0.0
 )
 
 require (
