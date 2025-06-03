@@ -150,6 +150,9 @@ func (f *Filer) Open(file any) error {
 			if err != nil {
 				return fmt.Errorf("filer: %w", err)
 			}
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("filer: response status %s", resp.Status)
+			}
 
 			f.name = filepath.Base(u.Path)
 			f.readCloser = resp.Body
