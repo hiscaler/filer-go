@@ -27,12 +27,12 @@ const (
 
 // File type
 const (
-	network             = "network"
-	base64Type          = "base64"
-	localFilePath       = "local-file"
-	textContent         = "text-content"
-	osFile              = "os-file"
-	multipartFileHeader = "form-file"
+	network             = "network"      // Network
+	base64Type          = "base64"       // Base64
+	localFilePath       = "local-file"   // Local file
+	textContent         = "text-content" // Text content
+	osFile              = "os-file"      // // Open file handle
+	multipartFileHeader = "form-file"    // Form file
 )
 
 var (
