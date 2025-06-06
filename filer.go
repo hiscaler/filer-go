@@ -363,20 +363,16 @@ func (f *Filer) SaveTo(filename string) (string, error) {
 	}
 
 	if strings.HasSuffix(filename, "/") || strings.HasSuffix(filename, "\\") {
-		filename = filepath.Clean(filename)
+		// Append file name
 		filename += string(os.PathSeparator) + f.Name()
 	}
-
-	filename = strings.ReplaceAll(filename, "\\", "/")
-	uri := filename
 	filename = filepath.Clean(filename)
+	uri := ""
 	if filepath.IsAbs(filename) {
 		uri = "" // Is bad? Like ////a/b/c.jpg
 	} else {
-		letter := uri[0:1]
-		if letter == "." {
-			uri = uri[1:]
-		} else if letter != "/" {
+		uri = filepath.ToSlash(filename)
+		if !strings.HasPrefix(uri, "/") {
 			uri = "/" + uri
 		}
 	}
