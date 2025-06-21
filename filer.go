@@ -18,6 +18,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 )
 
 const (
@@ -398,6 +399,10 @@ func (f *Filer) SaveTo(filename string) (string, error) {
 		return "", fmt.Errorf("filer: make %s directory failed, %w", dir, err)
 	}
 	// Creates file
+	if dir == "." || strings.HasSuffix(filename, dir) {
+		// 未提供文件名，则使用随机文件名
+		filename = filepath.Join(filename, fmt.Sprintf("%d%s", time.Now().Nanosecond(), f.Ext()))
+	}
 	file, err := os.Create(filename)
 	if err != nil {
 		return "", fmt.Errorf("filer: create %s file failed, %w", filename, err)
