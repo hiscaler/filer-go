@@ -8,6 +8,7 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"io"
 	"os"
 )
 
@@ -19,10 +20,28 @@ type Imager struct {
 	rgba    *image.NRGBA
 }
 
-func NewImager() *Imager {
-	return &Imager{
+func NewImager(filer *Filer) (*Imager, error) {
+	var err error
+	imager := &Imager{
+		Filer:   *filer,
 		Quality: 100,
 	}
+	if seeker, ok := filer.readCloser.(io.Seeker); ok {
+		_, err = seeker.Seek(0, io.SeekStart)
+		if err != nil {
+			return imager, err
+		}
+	}
+
+	config, _, err := image.DecodeConfig(filer.readCloser)
+	if err != nil {
+		return imager, err
+	}
+
+	imager.Width = config.Width
+	imager.Height = config.Height
+	return imager, nil
+
 }
 
 func (img *Imager) Resize(width, height, quality int) error {
