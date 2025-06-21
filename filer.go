@@ -211,6 +211,8 @@ func (f *Filer) Open(file any) error {
 		f.ext = filepath.Ext(s.Filename)
 		f.size = s.Size
 		f.readCloser = f1
+	case nil:
+		return errors.New("filer: open data is nil")
 	default:
 		return fmt.Errorf("filer: unsupported file format %T", s)
 	}
