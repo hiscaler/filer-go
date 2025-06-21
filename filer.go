@@ -200,6 +200,16 @@ func (f *Filer) Open(file any) error {
 	case multipart.File:
 		f.typ = formFile
 		f.readCloser = s
+	case FormFile:
+		f.typ = formFile
+		f.ext = path.Ext(s.Header.Filename)
+		f.size = s.Header.Size
+		f.readCloser = s.File
+	case *FormFile:
+		f.typ = formFile
+		f.ext = path.Ext(s.Header.Filename)
+		f.size = s.Header.Size
+		f.readCloser = s.File
 	case *multipart.FileHeader:
 		f.typ = formFile
 		f1, err := s.Open()
