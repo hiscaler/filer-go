@@ -27,12 +27,12 @@ const (
 
 // File type
 const (
-	network             = "network"      // Network
-	base64Type          = "base64"       // Base64
-	localFilePath       = "local-file"   // Local file
-	textContent         = "text-content" // Text content
-	osFile              = "os-file"      // // Open file handle
-	multipartFileHeader = "form-file"    // Form file
+	network       = "network"      // Network
+	base64Type    = "base64"       // Base64
+	localFilePath = "local-file"   // Local file
+	textContent   = "text-content" // Text content
+	osFile        = "os-file"      // // Open file handle
+	formFile      = "form-file"    // Form file
 )
 
 var (
@@ -197,8 +197,11 @@ func (f *Filer) Open(file any) error {
 		f.path = s.Name()
 		f.possibleExt = filepath.Ext(s.Name())
 		f.readCloser = s
+	case multipart.File:
+		f.typ = formFile
+		f.readCloser = s
 	case *multipart.FileHeader:
-		f.typ = multipartFileHeader
+		f.typ = formFile
 		f1, err := s.Open()
 		if err != nil {
 			return fmt.Errorf("filer: %w", err)
