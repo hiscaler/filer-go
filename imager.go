@@ -18,6 +18,7 @@ type Imager struct {
 	Height  int
 	Quality int
 	rgba    *image.NRGBA
+	image   image.Image
 }
 
 func NewImager(filer *Filer) (*Imager, error) {
@@ -26,9 +27,10 @@ func NewImager(filer *Filer) (*Imager, error) {
 		Filer:   *filer,
 		Quality: 100,
 	}
-	if seeker, ok := filer.readCloser.(io.Seeker); ok {
-		_, err = seeker.Seek(0, io.SeekStart)
-		if err != nil {
+
+	seeker, ok := filer.readCloser.(io.Seeker)
+	if ok {
+		if _, err = seeker.Seek(0, io.SeekStart); err != nil {
 			return imager, err
 		}
 	}
@@ -40,18 +42,50 @@ func NewImager(filer *Filer) (*Imager, error) {
 
 	imager.Width = config.Width
 	imager.Height = config.Height
-	return imager, nil
 
+	if ok {
+		if _, err = seeker.Seek(0, io.SeekStart); err != nil {
+			return imager, err
+		}
+	}
+
+	img, _, err := image.Decode(filer.readCloser)
+	if err != nil {
+		return imager, err
+	}
+	imager.image = img
+
+	return imager, nil
 }
 
-func (img *Imager) Resize(width, height, quality int) error {
+func (img *Imager) Mode() string {
+	switch m := img.image.(type) {
+	case *image.RGBA:
+		return "RGBA"
+	case *image.NRGBA:
+		return "NRGBA"
+	case *image.Gray:
+		return "Gray"
+	case *image.CMYK:
+		return "CMYK"
+	case *image.YCbCr:
+		return "YCbCr"
+	case *image.Paletted:
+		return "Paletted"
+	case image.Image:
+		return fmt.Sprintf("%T", m)
+	default:
+		return "Unknown"
+	}
+}
+
+func (img *Imager) Resize(width, height int) error {
 	origin, _, err := image.Decode(img.readCloser)
 	if err != nil {
 		return err
 	}
 	img.rgba = imaging.Resize(origin, width, height, imaging.Lanczos)
 	img.rgba = imaging.Resize(origin, width, height, imaging.Lanczos)
-	img.Quality = quality
 	return nil
 }
 

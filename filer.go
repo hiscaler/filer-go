@@ -339,15 +339,15 @@ func (f *Filer) IsEmpty() bool {
 	return err == nil && size == 0
 }
 
-func (f *Filer) IsImage() (bool, error) {
+func (f *Filer) IsImage() bool {
 	if f.readCloser == nil {
-		return false, errors.New("no read file")
+		return false
 	}
 	if seeker, ok := f.readCloser.(io.Seeker); ok {
 		// 保存当前位置
 		pos, err := seeker.Seek(0, io.SeekCurrent)
 		if err != nil {
-			return false, err
+			return false
 		}
 		// 读取文件内容
 		var buf [512]byte
@@ -355,15 +355,37 @@ func (f *Filer) IsImage() (bool, error) {
 		// 恢复当前位置
 		_, _ = seeker.Seek(pos, io.SeekStart)
 		if err2 != nil && err2 != io.EOF {
-			return false, err2
+			return false
 		}
 		// 尝试解码图片
 		_, _, err = image.DecodeConfig(bytes.NewReader(buf[:n]))
 		if err == nil {
-			return true, nil
+			return true
 		}
 	}
-	return false, nil
+	return false
+}
+
+func (f *Filer) Body() ([]byte, error) {
+	if f.cachedContent != nil {
+		return f.cachedContent, nil
+	}
+	if f.readCloser == nil {
+		return nil, errors.New("filer: no read content")
+	}
+
+	if seeker, ok := f.readCloser.(io.Seeker); ok {
+		_, err := seeker.Seek(0, io.SeekStart)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	b, err := io.ReadAll(f.readCloser)
+	if err == nil {
+		f.cachedContent = b
+	}
+	return b, err
 }
 
 // SaveTo 保存文件到指定位置
@@ -380,7 +402,11 @@ func (f *Filer) SaveTo(filename string) (string, error) {
 
 	if strings.HasSuffix(filename, "/") || strings.HasSuffix(filename, "\\") {
 		// Append file name
-		filename += string(os.PathSeparator) + f.Name()
+		name := f.Name()
+		if name == "" {
+			name = fmt.Sprintf("%d%s", time.Now().Nanosecond(), f.Ext())
+		}
+		filename += string(os.PathSeparator) + name
 	}
 	filename = filepath.Clean(filename)
 	uri := ""
@@ -413,7 +439,12 @@ func (f *Filer) SaveTo(filename string) (string, error) {
 		}
 	}()
 
-	// 写入文件数据
+	if seeker, ok := f.readCloser.(io.Seeker); ok {
+		_, err = seeker.Seek(0, io.SeekStart)
+		if err != nil {
+			return "", fmt.Errorf("filer: seek %s file data failed, %w", filename, err)
+		}
+	}
 	_, err = io.Copy(file, f.readCloser)
 	if err != nil {
 		return "", fmt.Errorf("filer: write %s file data failed, %w", filename, err)
