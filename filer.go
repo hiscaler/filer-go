@@ -418,10 +418,11 @@ func (f *Filer) SaveTo(filename string) (string, error) {
 	}
 	filename = filepath.Clean(filename)
 	uri := ""
-	if filepath.IsAbs(filename) {
-		uri = "" // Is bad? Like ////a/b/c.jpg
-	} else {
-		uri = filepath.ToSlash(filename)
+	if !filepath.IsAbs(filename) {
+		uri = strings.ReplaceAll(filename, "\\", "/")
+		if strings.HasPrefix(uri, ".") {
+			uri = uri[1:]
+		}
 		if !strings.HasPrefix(uri, "/") {
 			uri = "/" + uri
 		}
