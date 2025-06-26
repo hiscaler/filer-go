@@ -427,6 +427,7 @@ func (f *Filer) SaveTo(filename string) (string, error) {
 		}
 	}
 	f.uri = uri
+	filename = filepath.FromSlash(filename)
 	dir := filepath.Dir(filename)
 	// Creates dir and subdirectories if they do not exist
 	if err := os.MkdirAll(dir, 0666); err != nil {
@@ -447,11 +448,8 @@ func (f *Filer) SaveTo(filename string) (string, error) {
 		}
 	}()
 
-	if seeker, ok := f.readCloser.(io.Seeker); ok {
-		_, err = seeker.Seek(0, io.SeekStart)
-		if err != nil {
-			return "", fmt.Errorf("filer: seek %s file data failed, %w", filename, err)
-		}
+	if err = f.seekStart(); err != nil {
+		return "", fmt.Errorf("filer: seek %s file data failed, %w", filename, err)
 	}
 	_, err = io.Copy(file, f.readCloser)
 	if err != nil {
