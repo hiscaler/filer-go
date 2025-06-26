@@ -73,10 +73,11 @@ func TestOpen_Base64ImageData(t *testing.T) {
 }
 
 func TestOpen_TextContent(t *testing.T) {
-	err := f.Open("abcdefg")
+	textContent := "abcdefg"
+	err := f.Open(textContent)
 	assert.NoError(t, err)
 
-	assert.Equal(t, "", f.Ext())
+	assert.Equal(t, ".txt", f.Ext())
 
 	size, err := f.Size()
 	assert.NoError(t, err)
@@ -85,6 +86,10 @@ func TestOpen_TextContent(t *testing.T) {
 	_, err = f.SaveTo(`.\tmp/test.txt`)
 	assert.NoError(t, err)
 	assert.Equal(t, "/tmp/test.txt", f.Uri())
+	b, err := f.Body()
+	assert.NoError(t, err)
+	textContent2 := string(b)
+	assert.Equal(t, textContent, textContent2)
 }
 
 func TestOpen_LocalFile(t *testing.T) {

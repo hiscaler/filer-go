@@ -99,14 +99,14 @@ func init() {
 }
 
 type FileInfo struct {
-	Path  null.String    // File path
-	Type  null.String    // File type
-	Name  null.String    // File name with extension
-	Title null.String    // File name without extension
-	Uri   null.String    // File URI
-	Size  null.Int       // File size
-	Ext   null.String    // File extension
-	Body  *io.ReadCloser // File content
+	Path  null.String    // Path
+	Type  null.String    // Type
+	Name  null.String    // Name with extension
+	Title null.String    // Name without extension
+	Uri   null.String    // URI
+	Size  null.Int       // Size
+	Ext   null.String    // Extension
+	Body  *io.ReadCloser // Content
 }
 
 type Filer struct {
@@ -121,6 +121,12 @@ type Filer struct {
 	writeCloser io.WriteCloser
 	error       error
 }
+
+type ReadSeekCloser struct {
+	*bytes.Reader
+}
+
+func (r *ReadSeekCloser) Close() error { return nil }
 
 func NewFiler() *Filer {
 	return &Filer{}
@@ -190,7 +196,7 @@ func (f *Filer) Open(file any) error {
 			} else {
 				f.typ = textContent
 				f.size = int64(len(s))
-				f.readCloser = io.NopCloser(strings.NewReader(s))
+				f.readCloser = &ReadSeekCloser{bytes.NewReader([]byte(s))}
 			}
 		}
 	case *os.File:
@@ -366,26 +372,28 @@ func (f *Filer) IsImage() bool {
 	return false
 }
 
-func (f *Filer) Body() ([]byte, error) {
-	if f.cachedContent != nil {
-		return f.cachedContent, nil
+func (f *Filer) seekStart() error {
+	if f.readCloser == nil {
+		return nil
 	}
+	var err error
+	if seeker, ok := f.readCloser.(io.Seeker); ok {
+		_, err = seeker.Seek(0, io.SeekStart)
+	}
+	return err
+}
+
+func (f *Filer) Body() ([]byte, error) {
 	if f.readCloser == nil {
 		return nil, errors.New("filer: no read content")
 	}
 
-	if seeker, ok := f.readCloser.(io.Seeker); ok {
-		_, err := seeker.Seek(0, io.SeekStart)
-		if err != nil {
-			return nil, err
-		}
+	err := f.seekStart()
+	if err != nil {
+		return nil, err
 	}
 
-	b, err := io.ReadAll(f.readCloser)
-	if err == nil {
-		f.cachedContent = b
-	}
-	return b, err
+	return io.ReadAll(f.readCloser)
 }
 
 // SaveTo 保存文件到指定位置
