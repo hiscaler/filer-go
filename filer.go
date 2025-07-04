@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"gopkg.in/guregu/null.v4"
 	"image"
 	"io"
 	"mime"
@@ -19,6 +18,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"gopkg.in/guregu/null.v4"
 )
 
 const (

@@ -3,13 +3,14 @@ package filer
 import (
 	"errors"
 	"fmt"
-	"github.com/disintegration/imaging"
 	"image"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
 	"io"
 	"os"
+
+	"github.com/disintegration/imaging"
 )
 
 type Imager struct {

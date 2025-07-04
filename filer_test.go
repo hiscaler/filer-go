@@ -3,13 +3,14 @@ package filer_test
 import (
 	"bytes"
 	"encoding/base64"
-	"github.com/hiscaler/filer-go"
 	"log"
 	"mime/multipart"
 	"net/textproto"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/hiscaler/filer-go"
 
 	"github.com/stretchr/testify/assert"
 )
