@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/hiscaler/filer-go"
-
 	"github.com/stretchr/testify/assert"
 )
 
