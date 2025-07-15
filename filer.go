@@ -33,8 +33,9 @@ const (
 	base64Type    = "base64"       // Base64
 	localFilePath = "local-file"   // Local file
 	textContent   = "text-content" // Text content
-	osFile        = "os-file"      // // Open file handle
+	osFile        = "os-file"      // Opened file handle
 	formFile      = "form-file"    // Form file
+	fileBytes     = "bytes"        // File bytes
 )
 
 var (
@@ -133,6 +134,8 @@ func NewFiler() *Filer {
 	return &Filer{}
 }
 
+// Open 打开需要处理的文件
+// 支持的文件格式为 network, base64, local file, text-content, os.File, FormFile
 func (f *Filer) Open(file any) error {
 	// Reset file attributes before open
 	f.path = ""
@@ -200,6 +203,10 @@ func (f *Filer) Open(file any) error {
 				f.readCloser = &ReadSeekCloser{bytes.NewReader([]byte(s))}
 			}
 		}
+	case []byte:
+		f.typ = fileBytes
+		f.size = int64(len(s))
+		f.readCloser = &ReadSeekCloser{bytes.NewReader(s)}
 	case *os.File:
 		f.typ = osFile
 		f.path = s.Name()
