@@ -3,18 +3,20 @@ Filer
 
 Filer is a simple file operate library.
 
-Support os file object, path, http(s) url, base64 and multipart form file.
+Support os file handle, local file path, http(s) url, base64, multipart form and bytes.
 
 like get name, size, extension and save file, etc.
 
 you don't care about dir and path, it will return a valid value.
 
-##  Install
+## Install
+
 ```shell
 go get -u github.com/hiscaler/filer-go
 ```
 
 ## Usage
+
 ```go
 fer, err := filer.NewFiler()
 if err != nil {
