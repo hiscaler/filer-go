@@ -18,7 +18,9 @@ var f *filer.Filer
 
 func init() {
 	f = filer.NewFiler()
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 }
 
 func TestOpen_HTTPURL(t *testing.T) {

@@ -20,9 +20,11 @@ go get -u github.com/hiscaler/filer-go
 ```go
 fer, err := filer.NewFiler()
 if err != nil {
-	log.Panic("init filer failed", err)
+    log.Panic("init filer failed", err)
 }
-defer fer.Close()
+defer func() {
+    _ = f.Close()
+}()
 err := f.Open("http://examples-1251000004.cos.ap-shanghai.myqcloud.com/sample.jpeg")
 if err != nil {
     log.Panic("get http file failed", err)
