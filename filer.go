@@ -400,9 +400,9 @@ func (f *Filer) IsImage() bool {
 		if err != nil {
 			return false
 		}
-		// 读取文件内容
-		var buf [512]byte
-		n, err2 := f.readCloser.Read(buf[:])
+		// TIFF 等格式的 DecodeConfig 可能需读取超过 512 字节的 IFD
+		buf := make([]byte, 64*1024)
+		n, err2 := f.readCloser.Read(buf)
 		// 恢复当前位置
 		_, _ = seeker.Seek(pos, io.SeekStart)
 		if err2 != nil && err2 != io.EOF {
@@ -452,6 +452,8 @@ func (f *Filer) SaveTo(filename string) (string, error) {
 	if filename == "" {
 		return "", errors.New("filer: filename is can't empty")
 	}
+	// Windows 风格路径在 Unix 上 "\" 不是分隔符，会导致 ".\\tmp/..." 等异常路径；先统一成 "/" 再交给 FromSlash。
+	filename = filepath.FromSlash(strings.ReplaceAll(filename, `\`, `/`))
 
 	if strings.HasSuffix(filename, "/") || strings.HasSuffix(filename, "\\") {
 		// Append file name

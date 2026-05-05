@@ -11,6 +11,8 @@ import (
 	"github.com/hiscaler/filer-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/image/bmp"
+	"golang.org/x/image/tiff"
 )
 
 // pngFixture 生成最小合法 PNG，避免依赖仓库外文件。
@@ -173,4 +175,49 @@ func TestImager_JPEGFixture_EncodePath(t *testing.T) {
 	assert.True(t, len(body) > 100)
 	assert.Equal(t, byte(0xFF), body[0])
 	assert.Equal(t, byte(0xD8), body[1])
+}
+
+func TestImager_BMP_RoundTrip(t *testing.T) {
+	m := image.NewNRGBA(image.Rect(0, 0, 12, 12))
+	path := filepath.Join(t.TempDir(), "x.bmp")
+	wf, err := os.Create(path)
+	require.NoError(t, err)
+	require.NoError(t, bmp.Encode(wf, m))
+	require.NoError(t, wf.Close())
+
+	f := filer.NewFiler()
+	require.NoError(t, f.Open(path))
+	t.Cleanup(func() { _ = f.Close() })
+
+	img, err := f.Imager()
+	require.NoError(t, err)
+	require.NoError(t, img.Resize(6, 6))
+	out, err := img.Body()
+	require.NoError(t, err)
+	assert.True(t, bytes.HasPrefix(out, []byte("BM")))
+	decoded, _, err := image.Decode(bytes.NewReader(out))
+	require.NoError(t, err)
+	assert.Equal(t, 6, decoded.Bounds().Dx())
+}
+
+func TestImager_TIFF_RoundTrip(t *testing.T) {
+	m := image.NewNRGBA(image.Rect(0, 0, 10, 10))
+	path := filepath.Join(t.TempDir(), "x.tiff")
+	wf, err := os.Create(path)
+	require.NoError(t, err)
+	require.NoError(t, tiff.Encode(wf, m, nil))
+	require.NoError(t, wf.Close())
+
+	f := filer.NewFiler()
+	require.NoError(t, f.Open(path))
+	t.Cleanup(func() { _ = f.Close() })
+
+	img, err := f.Imager()
+	require.NoError(t, err)
+	require.NoError(t, img.Crop(5, 5))
+	out, err := img.Body()
+	require.NoError(t, err)
+	decoded, _, err := image.Decode(bytes.NewReader(out))
+	require.NoError(t, err)
+	assert.Equal(t, 5, decoded.Bounds().Dx())
 }

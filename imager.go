@@ -14,6 +14,8 @@ import (
 	"sync"
 
 	"github.com/disintegration/imaging"
+	"golang.org/x/image/bmp"
+	"golang.org/x/image/tiff"
 )
 
 type Imager struct {
@@ -156,13 +158,19 @@ func (img *Imager) loadSourceBytes() error {
 
 // encodeTo 按扩展名将 rgba 编码到 w（与 SaveTo 写入格式一致）。
 func (img *Imager) encodeTo(w io.Writer) error {
-	switch img.Ext() {
+	switch strings.ToLower(img.Ext()) {
 	case ".png":
 		return png.Encode(w, img.rgba)
 	case ".gif":
 		return gif.Encode(w, img.rgba, nil)
 	case ".jpg", ".jpeg":
 		return jpeg.Encode(w, img.rgba, &jpeg.Options{Quality: img.Quality})
+	case ".bmp":
+		return bmp.Encode(w, img.rgba)
+	case ".tif", ".tiff":
+		return tiff.Encode(w, img.rgba, nil)
+	case ".webp":
+		return encodeWebP(w, img.rgba, img.Quality)
 	default:
 		return fmt.Errorf("invalid '%s' extension name", img.Ext())
 	}
