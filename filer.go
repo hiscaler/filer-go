@@ -45,6 +45,11 @@ var (
 
 var commonMimeTypeExt map[string]string
 
+// defaultHTTPClient 用于拉取网络文件，避免无限阻塞并统一超时策略。
+var defaultHTTPClient = &http.Client{
+	Timeout: 60 * time.Second,
+}
+
 func init() {
 	rxBase64 = regexp.MustCompile(base64Pattern)
 	rxDataURI = regexp.MustCompile(dataURIPattern)
@@ -122,6 +127,7 @@ type Filer struct {
 	readCloser  io.ReadCloser
 	writeCloser io.WriteCloser
 	error       error
+	imager      *Imager
 }
 
 type ReadSeekCloser struct {
@@ -148,6 +154,7 @@ func (f *Filer) Open(file any) error {
 	f.readCloser = nil
 	f.writeCloser = nil
 	f.error = nil
+	f.imager = nil
 
 	switch s := file.(type) {
 	case string:
@@ -157,11 +164,12 @@ func (f *Filer) Open(file any) error {
 		if err == nil && slices.Contains([]string{"http", "https"}, u.Scheme) && u.Host != "" {
 			f.typ = network
 			var resp *http.Response
-			resp, err = http.Get(s)
+			resp, err = defaultHTTPClient.Get(s)
 			if err != nil {
 				return fmt.Errorf("filer: %w", err)
 			}
 			if resp.StatusCode != http.StatusOK {
+				_ = resp.Body.Close()
 				return fmt.Errorf("filer: response status %s", resp.Status)
 			}
 
@@ -255,6 +263,25 @@ func (f *Filer) Title() string {
 	return strings.ReplaceAll(f.name, f.Ext(), "")
 }
 
+func mimeBaseType(mediatype string) string {
+	if i := strings.Index(mediatype, ";"); i >= 0 {
+		return strings.TrimSpace(mediatype[:i])
+	}
+	return mediatype
+}
+
+func lookupCommonMimeExt(mediatype string) (string, bool) {
+	if ext, ok := commonMimeTypeExt[mediatype]; ok {
+		return ext, true
+	}
+	if base := mimeBaseType(mediatype); base != mediatype {
+		if ext, ok := commonMimeTypeExt[base]; ok {
+			return ext, true
+		}
+	}
+	return "", false
+}
+
 func detectFileExt(data []byte, suggestExtensions ...string) string {
 	mimeType := http.DetectContentType(data)
 
@@ -263,11 +290,18 @@ func detectFileExt(data []byte, suggestExtensions ...string) string {
 		suggestExt = strings.ToLower(suggestExtensions[0])
 	}
 
-	// 优先查手动表
-	if ext, ok := commonMimeTypeExt[mimeType]; ok && ext == suggestExt {
-		return ext
+	// 优先查手动表（支持 text/plain; charset=utf-8 等形式；无 suggestExt 时直接采用表内映射）
+	if ext, ok := lookupCommonMimeExt(mimeType); ok {
+		if suggestExt == "" || ext == suggestExt {
+			return ext
+		}
 	}
 	extensions, _ := mime.ExtensionsByType(mimeType)
+	if len(extensions) == 0 {
+		if base := mimeBaseType(mimeType); base != mimeType {
+			extensions, _ = mime.ExtensionsByType(base)
+		}
+	}
 	if len(extensions) == 0 {
 		return ""
 	}
@@ -280,7 +314,7 @@ func detectFileExt(data []byte, suggestExtensions ...string) string {
 		return len(b) - len(a)
 	})
 
-	if _, v, ok := strings.Cut(mimeType, "/"); ok {
+	if _, v, ok := strings.Cut(mimeBaseType(mimeType), "/"); ok {
 		suffix := "." + strings.ToLower(v)
 		for _, ext := range extensions {
 			if ext == suffix {
@@ -312,9 +346,12 @@ func (f *Filer) Ext() string {
 			// 恢复当前位置
 			_, _ = seeker.Seek(pos, io.SeekStart)
 			if err2 == nil || err2 == io.EOF {
-				ext := detectFileExt(buf[:n], f.possibleExt)
-				if ext != "" {
-					return strings.ToLower(ext)
+				// 流在 EOF 时 n==0，勿对空片做嗅探，否则易误判成文本等，应回退到 path 上的扩展名
+				if n > 0 {
+					ext := detectFileExt(buf[:n], f.possibleExt)
+					if ext != "" {
+						return strings.ToLower(ext)
+					}
 				}
 			}
 		}
@@ -439,11 +476,11 @@ func (f *Filer) SaveTo(filename string) (string, error) {
 	filename = filepath.FromSlash(filename)
 	dir := filepath.Dir(filename)
 	// Creates dir and subdirectories if they do not exist
-	if err := os.MkdirAll(dir, 0666); err != nil {
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", fmt.Errorf("filer: make %s directory failed, %w", dir, err)
 	}
-	// Creates file
-	if dir == "." || strings.HasSuffix(filename, dir) {
+	// Creates file（勿用 dir=="."：当前目录下的 out.txt 等会使 Dir 为 "." 导致误判）
+	if strings.HasSuffix(filename, dir) {
 		// 未提供文件名，则使用随机文件名
 		filename = filepath.Join(filename, fmt.Sprintf("%d%s", time.Now().Nanosecond(), f.Ext()))
 	}
@@ -476,4 +513,17 @@ func (f *Filer) Close() error {
 		return nil
 	}
 	return f.readCloser.Close()
+}
+
+func (f *Filer) Imager() (*Imager, error) {
+	if !f.IsImage() {
+		return nil, errors.New("filer: not an image")
+	}
+
+	imager, err := newImager(f)
+	if err != nil {
+		return nil, err
+	}
+	f.imager = imager
+	return imager, nil
 }

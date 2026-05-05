@@ -18,9 +18,6 @@ var f *filer.Filer
 
 func init() {
 	f = filer.NewFiler()
-	defer func() {
-		_ = f.Close()
-	}()
 }
 
 func TestOpen_HTTPURL(t *testing.T) {
@@ -69,7 +66,6 @@ func TestOpen_Base64ImageData(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, int64(11876), size)
 
-	assert.NoError(t, err)
 	_, err = f.SaveTo(`.\tmp/base64.jpg`)
 	assert.Equal(t, "/tmp/base64.jpg", f.Uri())
 }
@@ -166,8 +162,6 @@ func TestOpen_MultipartFileHeader(t *testing.T) {
 	err = f.Open(fileHeader)
 	assert.NoError(t, err)
 
-	e := f.Ext()
-	_ = e
 	assert.Equal(t, ".txt", f.Ext())
 
 	size, err := f.Size()
@@ -198,8 +192,8 @@ func TestFiler_OpenBytes(t *testing.T) {
 			}
 			_ = f.Open(fileBytes)
 			a, err := f.SaveTo("./tmp/test-1.jpg")
-			assert.Equal(t, nil, err)
-			assert.Equal(t, a, "tmp\\test-1.jpg")
+			assert.NoError(t, err)
+			assert.Equal(t, filepath.Join("tmp", "test-1.jpg"), a)
 		})
 	}
 }

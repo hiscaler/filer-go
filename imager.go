@@ -1,6 +1,7 @@
 package filer
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"image"
@@ -9,6 +10,8 @@ import (
 	"image/png"
 	"io"
 	"os"
+	"strings"
+	"sync"
 
 	"github.com/disintegration/imaging"
 )
@@ -20,45 +23,52 @@ type Imager struct {
 	Quality int
 	rgba    *image.NRGBA
 	image   image.Image
+
+	rawOnce    sync.Once
+	rawBuf     []byte
+	rawLoadErr error
 }
 
-func NewImager(filer *Filer) (*Imager, error) {
+// newImager 创建 Imager 实例
+func newImager(filer *Filer) (*Imager, error) {
 	var err error
 	imager := &Imager{
 		Filer:   *filer,
 		Quality: 100,
 	}
 
-	seeker, ok := filer.readCloser.(io.Seeker)
-	if ok {
-		if _, err = seeker.Seek(0, io.SeekStart); err != nil {
+	rc := filer.readCloser
+	var seeker io.Seeker
+	if s, ok := rc.(io.Seeker); ok {
+		seeker = s
+	} else {
+		var data []byte
+		data, err = io.ReadAll(rc)
+		if err != nil {
 			return imager, err
 		}
+		imager.readCloser = &ReadSeekCloser{bytes.NewReader(data)}
+		rc = imager.readCloser
+		seeker = rc.(io.Seeker)
 	}
 
-	config, _, err := image.DecodeConfig(filer.readCloser)
-	if err != nil {
+	if _, err = seeker.Seek(0, io.SeekStart); err != nil {
 		return imager, err
 	}
 
-	imager.Width = config.Width
-	imager.Height = config.Height
-
-	if ok {
-		if _, err = seeker.Seek(0, io.SeekStart); err != nil {
-			return imager, err
-		}
-	}
-
-	img, _, err := image.Decode(filer.readCloser)
+	img, _, err := image.Decode(rc)
 	if err != nil {
 		return imager, err
 	}
+	b := img.Bounds()
+	imager.Width = b.Dx()
+	imager.Height = b.Dy()
 	imager.image = img
 
 	return imager, nil
 }
 
+// Mode 返回图像模式
 func (img *Imager) Mode() string {
 	switch m := img.image.(type) {
 	case *image.RGBA:
@@ -80,37 +90,96 @@ func (img *Imager) Mode() string {
 	}
 }
 
+// Resize 缩放图像
 func (img *Imager) Resize(width, height int) error {
+	if err := img.seekStart(); err != nil {
+		return err
+	}
 	origin, _, err := image.Decode(img.readCloser)
 	if err != nil {
 		return err
 	}
 	img.rgba = imaging.Resize(origin, width, height, imaging.Lanczos)
-	img.rgba = imaging.Resize(origin, width, height, imaging.Lanczos)
 	return nil
 }
 
+// Crop 裁剪图像
 func (img *Imager) Crop(width, height int) error {
+	if err := img.seekStart(); err != nil {
+		return err
+	}
 	origin, _, err := image.Decode(img.readCloser)
 	if err != nil {
 		return err
 	}
 	img.rgba = imaging.CropAnchor(origin, width, height, imaging.Center)
-	img.rgba = imaging.CropAnchor(origin, width, height, imaging.Center)
 	return nil
 }
 
-func (img *Imager) SetDPI(dpi float64) error {
-	// 设置 DPI 通常需要处理图片的元数据，这里简化处理
-	return nil
+// Body 在已执行 Resize/Crop 时按扩展名与 Quality 编码；否则惰性读出源字节副本。
+// 与嵌入的 (*Filer).Body 同名：对 *Imager 调用 Body 为本方法；读原始整流请用 img.Filer.Body()。
+func (img *Imager) Body() ([]byte, error) {
+	if img.rgba != nil {
+		var buf bytes.Buffer
+		if err := img.encodeTo(&buf); err != nil {
+			return nil, err
+		}
+		return buf.Bytes(), nil
+	}
+	if err := img.loadSourceBytes(); err != nil {
+		return nil, err
+	}
+	return append([]byte(nil), img.rawBuf...), nil
 }
 
-func (img *Imager) Save(path string) error {
-	if img.writeCloser == nil {
-		return errors.New("no write file")
+// loadSourceBytes 首次需要原始字节时读入并缓存，同时用内存流替换 readCloser，便于后续解码。
+func (img *Imager) loadSourceBytes() error {
+	img.rawOnce.Do(func() {
+		if img.readCloser == nil {
+			img.rawLoadErr = errors.New("imager: no read source")
+			return
+		}
+		if err := img.seekStart(); err != nil {
+			img.rawLoadErr = err
+			return
+		}
+		b, err := io.ReadAll(img.readCloser)
+		if err != nil {
+			img.rawLoadErr = err
+			return
+		}
+		img.rawBuf = b
+		img.readCloser = &ReadSeekCloser{bytes.NewReader(b)}
+	})
+	return img.rawLoadErr
+}
+
+// encodeTo 按扩展名将 rgba 编码到 w（与 SaveTo 写入格式一致）。
+func (img *Imager) encodeTo(w io.Writer) error {
+	switch img.Ext() {
+	case ".png":
+		return png.Encode(w, img.rgba)
+	case ".gif":
+		return gif.Encode(w, img.rgba, nil)
+	case ".jpg", ".jpeg":
+		return jpeg.Encode(w, img.rgba, &jpeg.Options{Quality: img.Quality})
+	default:
+		return fmt.Errorf("invalid '%s' extension name", img.Ext())
+	}
+}
+
+// SaveTo 将图像写入 path（rgba 为空则写出惰性缓存的原始字节）。
+// 与嵌入的 (*Filer).SaveTo 同名：对 *Imager 调用 SaveTo 为本方法；需 Filer 的目录规则与返回值请用 img.Filer.SaveTo(...)。
+func (img *Imager) SaveTo(path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return errors.New("imager: path is empty")
 	}
 	if img.rgba == nil {
-		return errors.New("RGBA 错误")
+		if err := img.loadSourceBytes(); err != nil {
+			return err
+		}
+		return os.WriteFile(path, img.rawBuf, 0644)
 	}
 	f, err := os.Create(path)
 	if err != nil {
@@ -120,19 +189,5 @@ func (img *Imager) Save(path string) error {
 		err = f.Close()
 	}(f)
 
-	switch img.Ext() {
-	case ".png":
-		err = png.Encode(f, img.rgba)
-	case ".gif":
-		err = gif.Encode(f, img.rgba, nil)
-	case ".jpg", ".jpeg":
-		opt := jpeg.Options{
-			Quality: img.Quality,
-		}
-		err = jpeg.Encode(f, img.rgba, &opt)
-	default:
-		err = fmt.Errorf("invalid '%s' extension name", img.Ext())
-	}
-
-	return err
+	return img.encodeTo(f)
 }
