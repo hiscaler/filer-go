@@ -23,6 +23,7 @@ type Imager struct {
 	width   int // 解码或 Resize/Crop 后的宽，由 newImager 与 syncSizeFromRGBA 维护
 	height  int
 	quality int // 有损编码（JPEG、WebP），1–100，由 SetQuality 维护
+	format  string
 	rgba    *image.NRGBA
 	image   image.Image
 
@@ -58,13 +59,14 @@ func newImager(filer *Filer) (*Imager, error) {
 		return imager, err
 	}
 
-	img, _, err := image.Decode(rc)
+	img, format, err := image.Decode(rc)
 	if err != nil {
 		return imager, err
 	}
 	b := img.Bounds()
 	imager.width = b.Dx()
 	imager.height = b.Dy()
+	imager.format = strings.ToLower(strings.TrimSpace(format))
 	imager.image = img
 
 	return imager, nil
@@ -198,7 +200,7 @@ func (img *Imager) loadSourceBytes() error {
 
 // encodeTo 按扩展名将 rgba 编码到 w（与 SaveTo 写入格式一致）。
 func (img *Imager) encodeTo(w io.Writer) error {
-	switch strings.ToLower(img.Ext()) {
+	switch img.outputFormat() {
 	case ".png":
 		return png.Encode(w, img.rgba)
 	case ".gif":
@@ -212,13 +214,36 @@ func (img *Imager) encodeTo(w io.Writer) error {
 	case ".webp":
 		return encodeWebP(w, img.rgba, img.quality)
 	default:
-		return fmt.Errorf("imager: invalid '%s' extension name", img.Ext())
+		return fmt.Errorf("imager: cannot decide output format")
+	}
+}
+
+// outputFormat 决定输出编码格式：优先 Ext()，其次解码得到的 format，最后兜底 png。
+func (img *Imager) outputFormat() string {
+	if ext := img.Ext(); ext != "" {
+		return ext
+	}
+	switch img.format {
+	case "png":
+		return ".png"
+	case "gif":
+		return ".gif"
+	case "jpeg", "jpg":
+		return ".jpg"
+	case "bmp":
+		return ".bmp"
+	case "tif", "tiff":
+		return ".tiff"
+	case "webp":
+		return ".webp"
+	default:
+		return ".png"
 	}
 }
 
 // SaveTo 将图像写入 path（rgba 为空则写出惰性缓存的原始字节）。
 // 与嵌入的 (*Filer).SaveTo 同名：对 *Imager 调用 SaveTo 为本方法；需 Filer 的目录规则与返回值请用 img.Filer.SaveTo(...)。
-func (img *Imager) SaveTo(path string) error {
+func (img *Imager) SaveTo(path string) (err error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return errors.New("imager: path is empty")
@@ -234,7 +259,9 @@ func (img *Imager) SaveTo(path string) error {
 		return err
 	}
 	defer func(f *os.File) {
-		err = f.Close()
+		if cerr := f.Close(); err == nil && cerr != nil {
+			err = cerr
+		}
 	}(f)
 
 	return img.encodeTo(f)

@@ -220,7 +220,6 @@ func (f *Filer) Open(file any) error {
 				_ = resp.Body.Close()
 				return fmt.Errorf("filer: response status %s", resp.Status)
 			}
-
 			f.name = filepath.Base(u.Path)
 			f.readCloser = resp.Body
 			f.size = resp.ContentLength
@@ -238,7 +237,8 @@ func (f *Filer) Open(file any) error {
 				return fmt.Errorf("filer: %w", err)
 			}
 			f.size = int64(len(decodedData))
-			f.readCloser = io.NopCloser(bytes.NewReader(decodedData))
+			// 使用 ReadSeekCloser 保留 Seeker 能力，便于 IsImage/Imager/Size 等。
+			f.readCloser = &ReadSeekCloser{bytes.NewReader(decodedData)}
 			f.ext = detectFileExt(decodedData)
 		} else {
 			// 判断是普通文本还是文件路径（路径形态与正文无法严格区分，见 stringLooksLikeFilePath 注释）
@@ -308,6 +308,30 @@ func (f *Filer) Open(file any) error {
 		return fmt.Errorf("filer: unsupported file format %T", s)
 	}
 
+	return nil
+}
+
+// ensureSeekable 将 readCloser 转成可 Seek 的内存流（必要时读入全部字节）。
+// 用于图片嗅探/解码等需要回退或重复读取的场景（如 IsImage / Imager）。
+func (f *Filer) ensureSeekable() error {
+	if f.readCloser == nil {
+		return errors.New("filer: no read file")
+	}
+	if _, ok := f.readCloser.(io.Seeker); ok {
+		return nil
+	}
+
+	b, err := io.ReadAll(f.readCloser)
+	if err != nil {
+		return err
+	}
+
+	_ = f.readCloser.Close()
+	f.readCloser = &ReadSeekCloser{bytes.NewReader(b)}
+	// 对网络源，Content-Length 可能为 -1；缓冲后可得真实 size。
+	if f.typ == network || f.typ == base64Type || f.typ == textContent || f.size <= 0 {
+		f.size = int64(len(b))
+	}
 	return nil
 }
 
@@ -467,10 +491,18 @@ func (f *Filer) IsImage() bool {
 	if f.readCloser == nil {
 		return false
 	}
+	// 非 Seek 流先缓冲为内存流，否则无法在 sniff 后恢复位置。
+	if err := f.ensureSeekable(); err != nil {
+		return false
+	}
 	if seeker, ok := f.readCloser.(io.Seeker); ok {
 		// 保存当前位置
 		pos, err := seeker.Seek(0, io.SeekCurrent)
 		if err != nil {
+			return false
+		}
+		// 始终从头嗅探（流可能已被读到 EOF，例如 SaveTo 后）
+		if _, err := seeker.Seek(0, io.SeekStart); err != nil {
 			return false
 		}
 		// TIFF 等格式的 DecodeConfig 可能需读取超过 512 字节的 IFD
@@ -596,6 +628,12 @@ func (f *Filer) Close() error {
 
 // Imager 获取 Imager 实例
 func (f *Filer) Imager() (*Imager, error) {
+	if f.readCloser == nil {
+		return nil, errors.New("filer: no read file")
+	}
+	if err := f.ensureSeekable(); err != nil {
+		return nil, fmt.Errorf("filer: %w", err)
+	}
 	if !f.IsImage() {
 		return nil, errors.New("filer: not an image")
 	}

@@ -3,6 +3,7 @@ package filer_test
 import (
 	"bytes"
 	"image"
+	"image/jpeg"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -20,6 +21,13 @@ func pngFixture(w, h int) []byte {
 	img := image.NewNRGBA(image.Rect(0, 0, w, h))
 	var buf bytes.Buffer
 	_ = png.Encode(&buf, img)
+	return buf.Bytes()
+}
+
+func jpegFixture(w, h int) []byte {
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	var buf bytes.Buffer
+	_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90})
 	return buf.Bytes()
 }
 
@@ -121,6 +129,32 @@ func TestImager_Resize_BodyIsPNG(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 10, decoded.Bounds().Dx())
 	assert.Equal(t, 10, decoded.Bounds().Dy())
+}
+
+func TestImager_Resize_FromPNGBytesWithoutPath_UsesDecodedFormat(t *testing.T) {
+	f := filer.NewFiler()
+	require.NoError(t, f.Open(pngFixture(32, 32)))
+	img, err := f.Imager()
+	require.NoError(t, err)
+
+	require.NoError(t, img.Resize(10, 10))
+	out, err := img.Body()
+	require.NoError(t, err)
+	assert.True(t, bytes.HasPrefix(out, []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}))
+}
+
+func TestImager_Resize_FromJPEGBytesWithoutPath_UsesDecodedFormat(t *testing.T) {
+	f := filer.NewFiler()
+	require.NoError(t, f.Open(jpegFixture(32, 32)))
+	img, err := f.Imager()
+	require.NoError(t, err)
+
+	require.NoError(t, img.Resize(10, 10))
+	out, err := img.Body()
+	require.NoError(t, err)
+	assert.True(t, len(out) > 2)
+	assert.Equal(t, byte(0xFF), out[0])
+	assert.Equal(t, byte(0xD8), out[1])
 }
 
 func TestImager_Crop(t *testing.T) {
