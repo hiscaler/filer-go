@@ -21,7 +21,7 @@ func init() {
 }
 
 func TestOpen_HTTPURL(t *testing.T) {
-	err := f.Open("http://examples-1251000004.cos.ap-shanghai.myqcloud.com/sample.jpeg")
+	err := f.Open("https://examples-1251000004.cos.ap-shanghai.myqcloud.com/sample.jpeg")
 	if err != nil {
 		log.Panic("get http file failed", err)
 	}
@@ -236,4 +236,86 @@ func TestFiler_Title_uppercaseExtension(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, "sample", ff.Title())
+}
+
+func TestOpen_string_pathLikeButFileMissingFallsBackToText(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "no-such-dir", "a.jpg")
+	ff := filer.NewFiler()
+	defer func() { _ = ff.Close() }()
+	assert.NoError(t, ff.Open(p))
+	assert.Equal(t, "", ff.Name())
+	b, err := ff.Body()
+	assert.NoError(t, err)
+	assert.Equal(t, p, string(b))
+}
+
+func TestOpen_string_decimalLikeTextNotFilePath(t *testing.T) {
+	ff := filer.NewFiler()
+	defer func() { _ = ff.Close() }()
+	s := "version 1.2"
+	assert.NoError(t, ff.Open(s))
+	assert.Equal(t, "", ff.Name())
+	b, err := ff.Body()
+	assert.NoError(t, err)
+	assert.Equal(t, s, string(b))
+}
+
+func TestOpen_string_dotDigitIsTextNotHiddenPath(t *testing.T) {
+	ff := filer.NewFiler()
+	defer func() { _ = ff.Close() }()
+	s := ".2"
+	assert.NoError(t, ff.Open(s))
+	assert.Equal(t, "", ff.Name())
+	b, err := ff.Body()
+	assert.NoError(t, err)
+	assert.Equal(t, s, string(b))
+}
+
+func TestOpen_string_forwardSlashRelativePath(t *testing.T) {
+	src := filepath.Join("tests", "test.jpg")
+	if _, err := os.Stat(src); err != nil {
+		t.Skip("need tests/test.jpg:", err)
+	}
+	ff := filer.NewFiler()
+	defer func() { _ = ff.Close() }()
+	rel := filepath.ToSlash(filepath.Join(".", "tests", "test.jpg"))
+	assert.NoError(t, ff.Open(rel))
+	assert.Equal(t, "test.jpg", ff.Name())
+}
+
+func TestOpen_string_currentDirPrefix(t *testing.T) {
+	src := filepath.Join("tests", "test.jpg")
+	if _, err := os.Stat(src); err != nil {
+		t.Skip("need tests/test.jpg:", err)
+	}
+	ff := filer.NewFiler()
+	defer func() { _ = ff.Close() }()
+	p := "." + string(filepath.Separator) + filepath.Join("tests", "test.jpg")
+	assert.NoError(t, ff.Open(p))
+	assert.Equal(t, "test.jpg", ff.Name())
+}
+
+func TestOpen_string_parentDirRelativePath(t *testing.T) {
+	p := filepath.Join("tests", "..", "tests", "test.jpg")
+	if _, err := os.Stat(p); err != nil {
+		t.Skip("need path:", err)
+	}
+	ff := filer.NewFiler()
+	defer func() { _ = ff.Close() }()
+	assert.NoError(t, ff.Open(p))
+	assert.Equal(t, "test.jpg", ff.Name())
+}
+
+func TestOpen_string_plainFilenameWithExtInTemp(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("tests", "test.jpg"))
+	if err != nil {
+		t.Skip("need tests/test.jpg:", err)
+	}
+	td := t.TempDir()
+	path := filepath.Join(td, "photo.jpg")
+	assert.NoError(t, os.WriteFile(path, b, 0644))
+	ff := filer.NewFiler()
+	defer func() { _ = ff.Close() }()
+	assert.NoError(t, ff.Open(path))
+	assert.Equal(t, "photo.jpg", ff.Name())
 }

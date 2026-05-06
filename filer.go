@@ -140,6 +140,54 @@ func NewFiler() *Filer {
 	return &Filer{}
 }
 
+// plausibleFilenameExt 排除小数等被 filepath 误判为扩展名的情况（如 "version 1.2" → ".2"）。
+func plausibleFilenameExt(ext string) bool {
+	if len(ext) < 2 {
+		return false
+	}
+	suffix := ext[1:]
+	allDigit := true
+	for _, r := range suffix {
+		if r < '0' || r > '9' {
+			allDigit = false
+			break
+		}
+	}
+	return !allDigit
+}
+
+// stringLooksLikeFilePath 判断 Open(string) 是否**尝试**按本地路径打开。
+// 形如 "/tmp/a.jpg" 既可能是路径也可能是正文，无法从字面上区分；最终若 os.Open 仅因不存在而失败，
+// 则回退为纯文本（见 Open 中 localFilePath 分支）。
+func stringLooksLikeFilePath(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	if filepath.IsAbs(s) {
+		return true
+	}
+	if strings.Contains(s, "/") || strings.Contains(s, `\`) {
+		return true
+	}
+	if strings.HasPrefix(s, "./") || strings.HasPrefix(s, `.\`) {
+		return true
+	}
+	if strings.HasPrefix(s, "../") || strings.HasPrefix(s, `..\`) {
+		return true
+	}
+	if ext := filepath.Ext(s); ext != "" && plausibleFilenameExt(ext) {
+		return true
+	}
+	// Unix 隐藏文件等：.gitignore（排除 ".."）；".2" 等纯数字伪扩展名走纯文本
+	if strings.HasPrefix(s, ".") && len(s) > 1 && s != ".." {
+		if ext := filepath.Ext(s); ext == "" || plausibleFilenameExt(ext) {
+			return true
+		}
+	}
+	return false
+}
+
 // Open 打开需要处理的文件
 // 支持的文件格式为 network, base64, local file, text-content, os.File, FormFile
 func (f *Filer) Open(file any) error {
@@ -193,19 +241,23 @@ func (f *Filer) Open(file any) error {
 			f.readCloser = io.NopCloser(bytes.NewReader(decodedData))
 			f.ext = detectFileExt(decodedData)
 		} else {
-			// 判断是普通文本还是文件路径
-			if strings.Contains(s, string(os.PathSeparator)) ||
-				strings.HasPrefix(s, ".") ||
-				filepath.IsAbs(s) ||
-				path.Ext(s) != "" {
-				f.typ = localFilePath
+			// 判断是普通文本还是文件路径（路径形态与正文无法严格区分，见 stringLooksLikeFilePath 注释）
+			if stringLooksLikeFilePath(s) {
 				readCloser, err := os.Open(f.path)
 				if err != nil {
-					return fmt.Errorf("filer: %w", err)
+					if errors.Is(err, os.ErrNotExist) {
+						f.typ = textContent
+						f.size = int64(len(s))
+						f.readCloser = &ReadSeekCloser{bytes.NewReader([]byte(s))}
+					} else {
+						return fmt.Errorf("filer: %w", err)
+					}
+				} else {
+					f.typ = localFilePath
+					f.possibleExt = filepath.Ext(s)
+					f.readCloser = readCloser
+					f.name = filepath.Base(f.path)
 				}
-				f.possibleExt = path.Ext(s)
-				f.readCloser = readCloser
-				f.name = filepath.Base(f.path)
 			} else {
 				f.typ = textContent
 				f.size = int64(len(s))
