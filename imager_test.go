@@ -48,9 +48,29 @@ func TestImager_DimensionsAndMode(t *testing.T) {
 	img, err := f.Imager()
 	require.NoError(t, err)
 
-	assert.Equal(t, 16, img.Width)
-	assert.Equal(t, 8, img.Height)
+	assert.Equal(t, 16, img.Width())
+	assert.Equal(t, 8, img.Height())
 	assert.NotEmpty(t, img.Mode())
+}
+
+func TestImager_SetQuality(t *testing.T) {
+	data := pngFixture(8, 8)
+	f := filer.NewFiler()
+	require.NoError(t, f.Open(data))
+	img, err := f.Imager()
+	require.NoError(t, err)
+
+	assert.Equal(t, 100, img.Quality())
+	img.SetQuality(85)
+	assert.Equal(t, 85, img.Quality())
+	img.SetQuality(0)
+	assert.Equal(t, 1, img.Quality())
+	img.SetQuality(200)
+	assert.Equal(t, 100, img.Quality())
+
+	same := img.SetQuality(50)
+	assert.Same(t, img, same)
+	assert.Equal(t, 50, img.Quality())
 }
 
 func TestImager_NotAnImage(t *testing.T) {
@@ -91,6 +111,8 @@ func TestImager_Resize_BodyIsPNG(t *testing.T) {
 	img := openImagerFromPNGFile(t, 32, 32)
 
 	require.NoError(t, img.Resize(10, 10))
+	assert.Equal(t, 10, img.Width())
+	assert.Equal(t, 10, img.Height())
 	out, err := img.Body()
 	require.NoError(t, err)
 	assert.True(t, bytes.HasPrefix(out, []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}))
@@ -105,6 +127,8 @@ func TestImager_Crop(t *testing.T) {
 	img := openImagerFromPNGFile(t, 40, 30)
 
 	require.NoError(t, img.Crop(12, 12))
+	assert.Equal(t, 12, img.Width())
+	assert.Equal(t, 12, img.Height())
 	out, err := img.Body()
 	require.NoError(t, err)
 	decoded, _, err := image.Decode(bytes.NewReader(out))

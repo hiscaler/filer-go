@@ -20,9 +20,9 @@ import (
 
 type Imager struct {
 	Filer
-	Width   int
-	Height  int
-	Quality int
+	width   int // 解码或 Resize/Crop 后的宽，由 newImager 与 syncSizeFromRGBA 维护
+	height  int
+	quality int // 有损编码（JPEG、WebP），1–100，由 SetQuality 维护
 	rgba    *image.NRGBA
 	image   image.Image
 
@@ -36,7 +36,7 @@ func newImager(filer *Filer) (*Imager, error) {
 	var err error
 	imager := &Imager{
 		Filer:   *filer,
-		Quality: 100,
+		quality: 100,
 	}
 
 	rc := filer.readCloser
@@ -63,11 +63,49 @@ func newImager(filer *Filer) (*Imager, error) {
 		return imager, err
 	}
 	b := img.Bounds()
-	imager.Width = b.Dx()
-	imager.Height = b.Dy()
+	imager.width = b.Dx()
+	imager.height = b.Dy()
 	imager.image = img
 
 	return imager, nil
+}
+
+func (img *Imager) syncSizeFromRGBA() {
+	if img.rgba == nil {
+		return
+	}
+	b := img.rgba.Bounds()
+	img.width = b.Dx()
+	img.height = b.Dy()
+}
+
+// Width 返回当前逻辑宽：解码后的尺寸，或最近一次成功的 Resize/Crop 结果。
+func (img *Imager) Width() int {
+	return img.width
+}
+
+// Height 返回当前逻辑高。
+func (img *Imager) Height() int {
+	return img.height
+}
+
+// Quality 返回当前有损编码质量（1–100），默认 100。
+func (img *Imager) Quality() int {
+	return img.quality
+}
+
+// SetQuality 设置 JPEG/WebP 等有损输出的质量（1–100），越高质量越好、体积越大；超出范围会自动截断。
+// 返回 *Imager 便于链式调用，例如 img.SetQuality(85).Resize(200, 200)。
+func (img *Imager) SetQuality(quality int) *Imager {
+	switch {
+	case quality < 1:
+		img.quality = 1
+	case quality > 100:
+		img.quality = 100
+	default:
+		img.quality = quality
+	}
+	return img
 }
 
 // Mode 返回图像模式
@@ -102,6 +140,7 @@ func (img *Imager) Resize(width, height int) error {
 		return err
 	}
 	img.rgba = imaging.Resize(origin, width, height, imaging.Lanczos)
+	img.syncSizeFromRGBA()
 	return nil
 }
 
@@ -115,10 +154,11 @@ func (img *Imager) Crop(width, height int) error {
 		return err
 	}
 	img.rgba = imaging.CropAnchor(origin, width, height, imaging.Center)
+	img.syncSizeFromRGBA()
 	return nil
 }
 
-// Body 在已执行 Resize/Crop 时按扩展名与 Quality 编码；否则惰性读出源字节副本。
+// Body 在已执行 Resize/Crop 时按扩展名与当前 quality（SetQuality）编码；否则惰性读出源字节副本。
 // 与嵌入的 (*Filer).Body 同名：对 *Imager 调用 Body 为本方法；读原始整流请用 img.Filer.Body()。
 func (img *Imager) Body() ([]byte, error) {
 	if img.rgba != nil {
@@ -164,13 +204,13 @@ func (img *Imager) encodeTo(w io.Writer) error {
 	case ".gif":
 		return gif.Encode(w, img.rgba, nil)
 	case ".jpg", ".jpeg":
-		return jpeg.Encode(w, img.rgba, &jpeg.Options{Quality: img.Quality})
+		return jpeg.Encode(w, img.rgba, &jpeg.Options{Quality: img.quality})
 	case ".bmp":
 		return bmp.Encode(w, img.rgba)
 	case ".tif", ".tiff":
 		return tiff.Encode(w, img.rgba, nil)
 	case ".webp":
-		return encodeWebP(w, img.rgba, img.Quality)
+		return encodeWebP(w, img.rgba, img.quality)
 	default:
 		return fmt.Errorf("imager: invalid '%s' extension name", img.Ext())
 	}
