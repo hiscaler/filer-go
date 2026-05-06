@@ -184,7 +184,8 @@ func (f *Filer) Open(file any) error {
 				return errors.New("filer: invalid base64 format")
 			}
 
-			decodedData, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(parts[1], "base64,"))
+			var decodedData []byte
+			decodedData, err = base64.StdEncoding.DecodeString(strings.TrimPrefix(parts[1], "base64,"))
 			if err != nil {
 				return fmt.Errorf("filer: %w", err)
 			}
@@ -260,21 +261,31 @@ func (f *Filer) Name() string {
 
 // Title 文件标题（不带扩展名）
 func (f *Filer) Title() string {
-	return strings.ReplaceAll(f.name, f.Ext(), "")
-}
-
-func mimeBaseType(mediatype string) string {
-	if i := strings.Index(mediatype, ";"); i >= 0 {
-		return strings.TrimSpace(mediatype[:i])
+	ext := f.Ext()
+	if ext == "" || f.name == "" {
+		return f.name
 	}
-	return mediatype
+	n := len(f.name)
+	if n >= len(ext) && strings.EqualFold(f.name[n-len(ext):], ext) {
+		return f.name[:n-len(ext)]
+	}
+	return f.name
 }
 
-func lookupCommonMimeExt(mediatype string) (string, bool) {
-	if ext, ok := commonMimeTypeExt[mediatype]; ok {
+// mimeBaseType 获取 mime 的基本类型
+func mimeBaseType(mediaType string) string {
+	if i := strings.Index(mediaType, ";"); i >= 0 {
+		return strings.TrimSpace(mediaType[:i])
+	}
+	return mediaType
+}
+
+// lookupCommonMimeExt 查找 mime 的常见扩展名
+func lookupCommonMimeExt(mediaType string) (string, bool) {
+	if ext, ok := commonMimeTypeExt[mediaType]; ok {
 		return ext, true
 	}
-	if base := mimeBaseType(mediatype); base != mediatype {
+	if base := mimeBaseType(mediaType); base != mediaType {
 		if ext, ok := commonMimeTypeExt[base]; ok {
 			return ext, true
 		}
@@ -282,6 +293,7 @@ func lookupCommonMimeExt(mediatype string) (string, bool) {
 	return "", false
 }
 
+// detectFileExt 检测文件扩展名
 func detectFileExt(data []byte, suggestExtensions ...string) string {
 	mimeType := http.DetectContentType(data)
 
@@ -360,6 +372,7 @@ func (f *Filer) Ext() string {
 	return strings.ToLower(filepath.Ext(f.path))
 }
 
+// Size 文件大小
 func (f *Filer) Size() (int64, error) {
 	if f.readCloser == nil {
 		return 0, errors.New("filer: no read file")
@@ -385,11 +398,13 @@ func (f *Filer) Size() (int64, error) {
 	}
 }
 
+// IsEmpty 判断文件是否为空
 func (f *Filer) IsEmpty() bool {
 	size, err := f.Size()
 	return err == nil && size == 0
 }
 
+// IsImage 判断文件是否为图片
 func (f *Filer) IsImage() bool {
 	if f.readCloser == nil {
 		return false
@@ -417,6 +432,7 @@ func (f *Filer) IsImage() bool {
 	return false
 }
 
+// seekStart 恢复文件流到起始位置
 func (f *Filer) seekStart() error {
 	if f.readCloser == nil {
 		return nil
@@ -428,6 +444,7 @@ func (f *Filer) seekStart() error {
 	return err
 }
 
+// Body 获取文件内容
 func (f *Filer) Body() ([]byte, error) {
 	if f.readCloser == nil {
 		return nil, errors.New("filer: no read content")
@@ -506,10 +523,12 @@ func (f *Filer) SaveTo(filename string) (string, error) {
 	return filename, nil
 }
 
+// Uri 获取文件 URI
 func (f *Filer) Uri() string {
 	return f.uri
 }
 
+// Close 关闭文件流
 func (f *Filer) Close() error {
 	if f.readCloser == nil {
 		return nil
@@ -517,6 +536,7 @@ func (f *Filer) Close() error {
 	return f.readCloser.Close()
 }
 
+// Imager 获取 Imager 实例
 func (f *Filer) Imager() (*Imager, error) {
 	if !f.IsImage() {
 		return nil, errors.New("filer: not an image")

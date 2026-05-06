@@ -172,7 +172,7 @@ func (img *Imager) encodeTo(w io.Writer) error {
 	case ".webp":
 		return encodeWebP(w, img.rgba, img.Quality)
 	default:
-		return fmt.Errorf("invalid '%s' extension name", img.Ext())
+		return fmt.Errorf("imager: invalid '%s' extension name", img.Ext())
 	}
 }
 
