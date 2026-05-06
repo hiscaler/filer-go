@@ -7,6 +7,7 @@ import (
 	"github.com/KarpelesLab/gowebp"
 )
 
+// encodeWebP 封装 gowebp.Encode
 func encodeWebP(w io.Writer, m image.Image, quality int) error {
 	q := float32(quality)
 	if q <= 0 {
