@@ -1,12 +1,12 @@
 module github.com/hiscaler/filer-go
 
-go 1.23.0
+go 1.25.0
 
 require (
 	github.com/KarpelesLab/gowebp v0.1.1
 	github.com/disintegration/imaging v1.6.2
-	github.com/stretchr/testify v1.10.0
-	golang.org/x/image v0.28.0
+	github.com/stretchr/testify v1.11.1
+	golang.org/x/image v0.39.0
 	gopkg.in/guregu/null.v4 v4.0.0
 )
 
