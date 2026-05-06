@@ -208,8 +208,7 @@ func TestFiler_Title(t *testing.T) {
 		want   string
 	}{
 		{"t1", fields{path: "./tests/test.jpg"}, "test"},
-		{"t2", fields{path: "./tests/test.JPG"}, "test"},
-		{"t3", fields{path: "./bad-dir/bad-file.jpg"}, ""},
+		{"t2", fields{path: "./bad-dir/bad-file.jpg"}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -217,4 +216,24 @@ func TestFiler_Title(t *testing.T) {
 			assert.Equalf(t, tt.want, f.Title(), "Title()")
 		})
 	}
+}
+
+// 仓库内仅存在 tests/test.jpg；在大小写敏感的文件系统上不存在 test.JPG，需在临时目录写入大写扩展名文件再测 Title。
+func TestFiler_Title_uppercaseExtension(t *testing.T) {
+	src := filepath.Join("tests", "test.jpg")
+	b, err := os.ReadFile(src)
+	if err != nil {
+		t.Skip("need tests/test.jpg:", err)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sample.JPG")
+	if err := os.WriteFile(path, b, 0644); err != nil {
+		t.Fatal(err)
+	}
+	ff := filer.NewFiler()
+	defer func() { _ = ff.Close() }()
+	if err := ff.Open(path); err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "sample", ff.Title())
 }
