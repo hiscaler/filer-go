@@ -226,12 +226,16 @@ func (f *Filer) Open(file any) error {
 		f.readCloser = s
 	case FormFile:
 		f.typ = formFile
-		f.ext = path.Ext(s.Header.Filename)
+		fn := strings.TrimSpace(s.Header.Filename)
+		f.name = fn
+		f.ext = path.Ext(fn)
 		f.size = s.Header.Size
 		f.readCloser = s.File
 	case *FormFile:
 		f.typ = formFile
-		f.ext = path.Ext(s.Header.Filename)
+		fn := strings.TrimSpace(s.Header.Filename)
+		f.name = fn
+		f.ext = path.Ext(fn)
 		f.size = s.Header.Size
 		f.readCloser = s.File
 	case *multipart.FileHeader:
@@ -240,9 +244,10 @@ func (f *Filer) Open(file any) error {
 		if err != nil {
 			return fmt.Errorf("filer: %w", err)
 		}
-		f.name = s.Filename
-		f.possibleExt = filepath.Ext(s.Filename)
-		f.ext = filepath.Ext(s.Filename)
+		fn := strings.TrimSpace(s.Filename)
+		f.name = fn
+		f.possibleExt = filepath.Ext(fn)
+		f.ext = filepath.Ext(fn)
 		f.size = s.Size
 		f.readCloser = f1
 	case nil:
@@ -261,15 +266,16 @@ func (f *Filer) Name() string {
 
 // Title 文件标题（不带扩展名）
 func (f *Filer) Title() string {
+	name := strings.TrimSpace(f.name)
 	ext := f.Ext()
-	if ext == "" || f.name == "" {
-		return f.name
+	if ext == "" || name == "" {
+		return name
 	}
-	n := len(f.name)
-	if n >= len(ext) && strings.EqualFold(f.name[n-len(ext):], ext) {
-		return f.name[:n-len(ext)]
+	n := len(name)
+	if n >= len(ext) && strings.EqualFold(name[n-len(ext):], ext) {
+		return name[:n-len(ext)]
 	}
-	return f.name
+	return name
 }
 
 // mimeBaseType 获取 mime 的基本类型

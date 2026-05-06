@@ -208,8 +208,8 @@ func TestFiler_Title(t *testing.T) {
 		want   string
 	}{
 		{"t1", fields{path: "./tests/test.jpg"}, "test"},
-		{"t1", fields{path: "./tests/test.JPG"}, "test"},
-		{"t2", fields{path: "./bad-dir/bad-file.jpg"}, ""},
+		{"t2", fields{path: "./tests/test.JPG"}, "test"},
+		{"t3", fields{path: "./bad-dir/bad-file.jpg"}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
