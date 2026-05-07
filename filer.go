@@ -507,10 +507,10 @@ func (f *Filer) IsImage() bool {
 		}
 		// TIFF 等格式的 DecodeConfig 可能需读取超过 512 字节的 IFD
 		buf := make([]byte, 64*1024)
-		n, err2 := f.readCloser.Read(buf)
+		n, err := f.readCloser.Read(buf)
 		// 恢复当前位置
 		_, _ = seeker.Seek(pos, io.SeekStart)
-		if err2 != nil && err2 != io.EOF {
+		if err != nil && err != io.EOF {
 			return false
 		}
 		// 尝试解码图片
