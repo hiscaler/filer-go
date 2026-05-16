@@ -134,8 +134,10 @@ type ReadSeekCloser struct {
 	*bytes.Reader
 }
 
+// Close 关闭 ReadSeekCloser
 func (r *ReadSeekCloser) Close() error { return nil }
 
+// NewFiler 创建 Filer 实例
 func NewFiler() *Filer {
 	return &Filer{}
 }
